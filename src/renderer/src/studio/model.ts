@@ -1,9 +1,9 @@
 // The Pixel Studio document and its `.sprite.json` file format.
-// Layers and frames are part of the format from the start, even though the first
-// version of the Studio edits a single layer and frame.
+// Frames are part of the format from the start; the Studio edits frame 0 until
+// animation arrives.
 
 import { DEFAULT_PALETTE, type Palette } from './palettes'
-import { uniqueColors } from './raster'
+import { blendOver, uniqueColors } from './raster'
 
 export interface Layer {
   id: string
@@ -30,7 +30,7 @@ export interface SpriteDoc {
 export const FILE_FORMAT = 'spritebuilder-sprite'
 export const MAX_SIZE = 512
 
-const newId = (): string => Math.random().toString(36).slice(2, 10)
+export const newId = (): string => Math.random().toString(36).slice(2, 10)
 
 export function createDoc(width: number, height: number, palette: Palette = DEFAULT_PALETTE): SpriteDoc {
   const layer: Layer = { id: newId(), name: 'Layer 1', visible: true, opacity: 1 }
@@ -58,17 +58,7 @@ export function compositeFrame(doc: SpriteDoc, frameIndex = 0): Uint8ClampedArra
   const frame = doc.frames[frameIndex]
   for (const layer of doc.layers) {
     const cel = frame.cels[layer.id]
-    if (!layer.visible || !cel) continue
-    for (let i = 0; i < out.length; i += 4) {
-      const sa = (cel[i + 3] / 255) * layer.opacity
-      if (sa === 0) continue
-      const da = out[i + 3] / 255
-      const a = sa + da * (1 - sa)
-      for (let c = 0; c < 3; c++) {
-        out[i + c] = (cel[i + c] * sa + out[i + c] * da * (1 - sa)) / a
-      }
-      out[i + 3] = a * 255
-    }
+    if (layer.visible && cel) blendOver(out, cel, layer.opacity)
   }
   return out
 }

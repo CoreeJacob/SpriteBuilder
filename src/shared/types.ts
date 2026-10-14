@@ -85,8 +85,8 @@ export interface SpriteBuilderApi {
   /** Absolute path of a file dropped from Finder. */
   getPathForFile(file: File): string
 
-  /** Undo/Redo from the app menu (the menu swallows Cmd+Z before the page sees it). */
+  /** Undo/Redo/Select All from the app menu (the menu swallows ⌘Z and ⌘A before the page sees them). */
   onMenuCommand(callback: (command: MenuCommand) => void): () => void
 }
 
-export type MenuCommand = 'undo' | 'redo'
+export type MenuCommand = 'undo' | 'redo' | 'selectAll'

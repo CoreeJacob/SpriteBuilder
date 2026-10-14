@@ -1,18 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Icon, type IconName } from '@/app/Icon'
 import { useApp } from '@/app/store'
+import { readPastedImage, writeSystemClipboard } from './clipboard'
 import { confirmDiscard, exportPng, frameCanvas, saveSprite } from './io'
+import { LayersPanel } from './LayersPanel'
 import { compositeFrame, MAX_SIZE } from './model'
 import { PALETTES, type Palette } from './palettes'
 import { PixelCanvas } from './PixelCanvas'
 import { uniqueColors } from './raster'
-import { fitZoom, useStudio, ZOOM_LEVELS, type Tool } from './store'
+import { fitZoom, SHAPE_TOOLS, useStudio, ZOOM_LEVELS, type Tool } from './store'
 
-const TOOLS: Array<{ tool: Tool; icon: IconName; label: string; key: string }> = [
+const TOOLS: Array<{ tool: Tool; icon: IconName; label: string; key: string; groupStart?: boolean }> = [
   { tool: 'pencil', icon: 'pencil', label: 'Pencil', key: 'B' },
   { tool: 'eraser', icon: 'eraser', label: 'Eraser', key: 'E' },
   { tool: 'fill', icon: 'fill', label: 'Fill', key: 'G' },
-  { tool: 'eyedropper', icon: 'eyedropper', label: 'Eyedropper', key: 'I' }
+  { tool: 'eyedropper', icon: 'eyedropper', label: 'Eyedropper', key: 'I' },
+  { tool: 'line', icon: 'line', label: 'Line · ⇧ snaps to 45°', key: 'L', groupStart: true },
+  { tool: 'rect', icon: 'rect', label: 'Rectangle · ⇧ for a square', key: 'R' },
+  { tool: 'ellipse', icon: 'ellipse', label: 'Ellipse · ⇧ for a circle', key: 'O' },
+  { tool: 'select', icon: 'select', label: 'Select · drag inside to move, ⌥-drag to copy', key: 'M', groupStart: true }
 ]
 
 const PRESETS = [8, 16, 32, 64, 128]
@@ -70,7 +76,10 @@ function useStudioShortcuts(openNew: () => void): void {
       const s = useStudio.getState()
       const key = e.key.toLowerCase()
       if (e.metaKey) {
-        if (key === 's') {
+        if (key === 'd') {
+          e.preventDefault()
+          s.deselect()
+        } else if (key === 's') {
           e.preventDefault()
           void saveSprite(e.shiftKey)
         } else if (key === 'n') {
@@ -83,16 +92,70 @@ function useStudioShortcuts(openNew: () => void): void {
         return
       }
       if (!s.doc) return
+      if (s.selection && e.key.startsWith('Arrow')) {
+        // Nudge the selected pixels; ⇧ moves a whole 8-pixel tile.
+        e.preventDefault()
+        if (!s.floating) s.liftSelection()
+        const f = useStudio.getState().floating
+        if (!f) return
+        const step = e.shiftKey ? 8 : 1
+        const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0
+        const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0
+        s.moveFloating(f.x + dx, f.y + dy)
+        return
+      }
+      if (s.selection && (e.key === 'Backspace' || e.key === 'Delete')) {
+        e.preventDefault()
+        s.deleteSelection()
+        return
+      }
+      if (e.key === 'Escape') return s.deselect()
+      if (e.key === 'Enter') return s.commitFloating()
       const tool = TOOLS.find((t) => t.key.toLowerCase() === key)
       if (tool) s.setTool(tool.tool)
+      else if (key === 'f') s.toggleFillShapes()
       else if (key === 'x') s.swapColors()
       else if (key === 't') s.toggleTileMode()
       else if (key === '=' || key === '+') stepZoom(1)
       else if (key === '-') stepZoom(-1)
       else if (key === '0') s.setZoom(fitZoom(s.doc.width, s.doc.height))
     }
+    // ⌘C/⌘X/⌘V come from the Edit menu as clipboard events.
+    const active = (): boolean =>
+      useApp.getState().view === 'studio' && !useApp.getState().prompt && !isTyping() && !!useStudio.getState().doc
+    const onCopy = (e: ClipboardEvent): void => {
+      if (!active()) return
+      const image = e.type === 'cut' ? useStudio.getState().cutSelection() : useStudio.getState().copySelection()
+      if (!image) return
+      e.preventDefault()
+      void writeSystemClipboard(image)
+    }
+    const onPaste = (e: ClipboardEvent): void => {
+      if (!active()) return
+      e.preventDefault()
+      void readPastedImage(e).then((pasted) => {
+        const own = useStudio.getState().clipboard
+        // Our own copy comes back from the system clipboard too; prefer it, as it remembers where it came from.
+        const image = own && (!pasted || (pasted.w === own.w && pasted.h === own.h)) ? own : pasted
+        if (image) useStudio.getState().paste(image)
+        else useApp.getState().notify('Nothing to paste. Copy a selection (⌘C) or an image first.', 'error')
+      })
+    }
+    const onSelectAll = (): void => {
+      if (active()) useStudio.getState().selectAll()
+    }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    document.addEventListener('copy', onCopy)
+    document.addEventListener('cut', onCopy)
+    document.addEventListener('paste', onPaste)
+    window.addEventListener('studio:selectAll', onSelectAll)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      document.removeEventListener('copy', onCopy)
+      document.removeEventListener('cut', onCopy)
+      document.removeEventListener('paste', onPaste)
+      window.removeEventListener('studio:selectAll', onSelectAll)
+    }
   }, [openNew])
 }
 
@@ -110,6 +173,8 @@ function StudioBar({ onNew }: { onNew: () => void }) {
   const zoom = useStudio((s) => s.zoom)
   const showGrid = useStudio((s) => s.showGrid)
   const tileMode = useStudio((s) => s.tileMode)
+  const mirrorX = useStudio((s) => s.mirrorX)
+  const mirrorY = useStudio((s) => s.mirrorY)
   const canUndo = useStudio((s) => s.canUndo)
   const canRedo = useStudio((s) => s.canRedo)
   const folders = useApp((s) => s.library?.folders ?? [])
@@ -182,6 +247,12 @@ function StudioBar({ onNew }: { onNew: () => void }) {
       <button className={`icon-btn ${showGrid ? 'on' : ''}`} onClick={s.toggleGrid} title="Pixel grid (⌘')">
         <Icon name="grid" />
       </button>
+      <button className={`icon-btn ${mirrorX ? 'on' : ''}`} onClick={s.toggleMirrorX} title="Mirror left ↔ right">
+        <Icon name="mirrorX" />
+      </button>
+      <button className={`icon-btn ${mirrorY ? 'on' : ''}`} onClick={s.toggleMirrorY} title="Mirror top ↕ bottom">
+        <Icon name="mirrorY" />
+      </button>
       <button className={`icon-btn ${tileMode ? 'on' : ''}`} onClick={s.toggleTileMode} title="Tile preview: draw seamless tiles (T)">
         <Icon name="tile" />
       </button>
@@ -200,19 +271,27 @@ function ToolBox() {
   const tool = useStudio((s) => s.tool)
   const primary = useStudio((s) => s.primary)
   const secondary = useStudio((s) => s.secondary)
-  const { setTool, setPrimary, setSecondary, swapColors } = useStudio.getState()
+  const fillShapes = useStudio((s) => s.fillShapes)
+  const { setTool, setPrimary, setSecondary, swapColors, toggleFillShapes } = useStudio.getState()
 
   return (
     <div className="toolbox">
       {TOOLS.map((t) => (
-        <button
-          key={t.tool}
-          className={`tool ${tool === t.tool ? 'on' : ''}`}
-          onClick={() => setTool(t.tool)}
-          title={`${t.label} (${t.key})`}
-        >
-          <Icon name={t.icon} size={20} />
-        </button>
+        <div key={t.tool} className="tool-slot">
+          {t.groupStart && <div className="tool-divider" />}
+          <button className={`tool ${tool === t.tool ? 'on' : ''}`} onClick={() => setTool(t.tool)} title={`${t.label} (${t.key})`}>
+            <Icon name={t.icon} size={20} />
+          </button>
+          {t.tool === 'ellipse' && SHAPE_TOOLS.includes(tool) && (
+            <button
+              className={`tool small ${fillShapes ? 'on' : ''}`}
+              onClick={toggleFillShapes}
+              title={`${fillShapes ? 'Filled shapes' : 'Outline shapes'} · click to switch (F)`}
+            >
+              <Icon name={fillShapes ? 'shapeFilled' : 'rect'} size={14} filled={fillShapes} />
+            </button>
+          )}
+        </div>
       ))}
       <div className="color-pair">
         <label className="swatch-big primary" style={{ background: primary }} title={`Front colour ${primary} · left click paints with it`}>
@@ -234,6 +313,7 @@ function SidePanel({ hover }: { hover: [number, number] | null }) {
   const version = useStudio((s) => s.version)
   const primary = useStudio((s) => s.primary)
   const secondary = useStudio((s) => s.secondary)
+  const floating = useStudio((s) => s.floating)
   const [tiled, setTiled] = useState(false)
   const previewRef = useRef<HTMLCanvasElement>(null)
   const { setPrimary, setSecondary, setPalette, addToPalette, removeFromPalette } = useStudio.getState()
@@ -250,8 +330,31 @@ function SidePanel({ hover }: { hover: [number, number] | null }) {
     canvas.width = frame.width * repeat
     canvas.height = frame.height * repeat
     const ctx = canvas.getContext('2d')!
-    for (let y = 0; y < repeat; y++) for (let x = 0; x < repeat; x++) ctx.drawImage(frame, x * frame.width, y * frame.height)
-  }, [doc, version, tiled])
+    ctx.imageSmoothingEnabled = false
+    // Pixels being moved by the select tool aren't on the layer yet; draw them on top.
+    let lifted: HTMLCanvasElement | null = null
+    if (floating) {
+      lifted = document.createElement('canvas')
+      lifted.width = floating.w
+      lifted.height = floating.h
+      lifted.getContext('2d')!.putImageData(new ImageData(floating.pixels.slice() as Uint8ClampedArray<ArrayBuffer>, floating.w, floating.h), 0, 0)
+    }
+    for (let y = 0; y < repeat; y++) {
+      for (let x = 0; x < repeat; x++) {
+        const ox = x * frame.width
+        const oy = y * frame.height
+        ctx.drawImage(frame, ox, oy)
+        if (lifted && floating) {
+          ctx.save()
+          ctx.beginPath()
+          ctx.rect(ox, oy, frame.width, frame.height)
+          ctx.clip()
+          ctx.drawImage(lifted, ox + floating.x * scale, oy + floating.y * scale, floating.w * scale, floating.h * scale)
+          ctx.restore()
+        }
+      }
+    }
+  }, [doc, version, tiled, floating])
 
   const sizeHint = !isPowerOfTwo(doc.width) || !isPowerOfTwo(doc.height)
 
@@ -268,6 +371,8 @@ function SidePanel({ hover }: { hover: [number, number] | null }) {
           <canvas ref={previewRef} />
         </div>
       </section>
+
+      <LayersPanel />
 
       <section>
         <div className="panel-heading">

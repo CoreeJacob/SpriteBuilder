@@ -121,7 +121,7 @@ function buildMenu(): void {
           { role: 'cut' },
           { role: 'copy' },
           { role: 'paste' },
-          { role: 'selectAll' }
+          { label: 'Select All', accelerator: 'CmdOrCtrl+A', click: send('selectAll') }
         ]
       },
       {

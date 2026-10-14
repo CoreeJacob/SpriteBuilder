@@ -1207,3 +1207,95 @@ textarea.input {
     opacity: 0;
   }
 }
+
+/* ---------- studio: tool groups and layers ---------- */
+
+.tool-slot {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+}
+.tool-divider {
+  width: 30px;
+  height: 1px;
+  margin: 4px 0;
+  background: var(--border);
+}
+.tool.small {
+  width: 30px;
+  height: 24px;
+}
+.layer-actions {
+  display: flex;
+}
+.layer-actions .icon-btn {
+  width: 24px;
+  height: 24px;
+}
+.layers {
+  display: grid;
+  gap: 2px;
+  max-height: 210px;
+  overflow-y: auto;
+}
+.layer-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 6px 0 2px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.layer-row:hover {
+  background: var(--panel-2);
+}
+.layer-row.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.layer-row.hidden-layer .layer-name,
+.layer-row.hidden-layer .layer-thumb {
+  opacity: 0.4;
+}
+.layer-row .eye {
+  width: 24px;
+  height: 24px;
+}
+.layer-thumb {
+  width: 28px;
+  height: 28px;
+  border-radius: 3px;
+  image-rendering: pixelated;
+  object-fit: contain;
+  background-size: 8px 8px;
+  flex: none;
+}
+.layer-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.layer-name-input {
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+}
+.opacity-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.opacity-row .slider {
+  flex: 1;
+}
+.opacity-value {
+  width: 34px;
+  text-align: right;
+}
+.pixel-canvas.tool-move {
+  cursor: move;
+}

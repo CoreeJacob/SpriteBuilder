@@ -120,3 +120,173 @@ export function uniqueColors(buf: Uint8ClampedArray, limit = Infinity): string[]
     .slice(0, limit)
     .map(([key]) => toHex([key >>> 24, (key >>> 16) & 255, (key >>> 8) & 255, key & 255]))
 }
+
+// ---------- shapes ----------
+
+/** Corners in any order → [left, top, right, bottom]. */
+export function normalizeRect(x0: number, y0: number, x1: number, y1: number): [number, number, number, number] {
+  return [Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1)]
+}
+
+export function rectPoints(x0: number, y0: number, x1: number, y1: number, filled: boolean): Array<[number, number]> {
+  const [l, t, r, b] = normalizeRect(x0, y0, x1, y1)
+  const points: Array<[number, number]> = []
+  for (let y = t; y <= b; y++) {
+    for (let x = l; x <= r; x++) {
+      if (filled || x === l || x === r || y === t || y === b) points.push([x, y])
+    }
+  }
+  return points
+}
+
+/**
+ * Ellipse that fits the box between two corners. A pixel is inside when its centre
+ * is inside the ellipse; the outline is the inside pixels that touch the outside,
+ * which keeps the shape symmetric and gap-free at any size.
+ */
+export function ellipsePoints(x0: number, y0: number, x1: number, y1: number, filled: boolean): Array<[number, number]> {
+  const [l, t, r, b] = normalizeRect(x0, y0, x1, y1)
+  const w = r - l + 1
+  const h = b - t + 1
+  const rx = w / 2
+  const ry = h / 2
+  const inside = (x: number, y: number): boolean => {
+    if (x < 0 || y < 0 || x >= w || y >= h) return false
+    const dx = (x + 0.5 - rx) / rx
+    const dy = (y + 0.5 - ry) / ry
+    return dx * dx + dy * dy <= 1
+  }
+  const points: Array<[number, number]> = []
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (!inside(x, y)) continue
+      const edge = !inside(x - 1, y) || !inside(x + 1, y) || !inside(x, y - 1) || !inside(x, y + 1)
+      if (filled || edge) points.push([l + x, t + y])
+    }
+  }
+  // Very thin boxes have no "inside" pixel centres; fall back to the box itself.
+  return points.length ? points : rectPoints(l, t, r, b, true)
+}
+
+/** Shift-drag: square box, circle, or a line snapped to 45° steps. */
+export function constrainEnd(x0: number, y0: number, x1: number, y1: number, mode: 'box' | 'line'): [number, number] {
+  const dx = x1 - x0
+  const dy = y1 - y0
+  if (mode === 'box') {
+    const size = Math.max(Math.abs(dx), Math.abs(dy))
+    return [x0 + Math.sign(dx || 1) * size, y0 + Math.sign(dy || 1) * size]
+  }
+  const angle = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4)
+  const length = Math.max(Math.abs(dx), Math.abs(dy))
+  const sx = Math.round(Math.cos(angle))
+  const sy = Math.round(Math.sin(angle))
+  return [x0 + sx * length, y0 + sy * length]
+}
+
+/** Adds the mirrored copies of each point for horizontal and/or vertical symmetry. */
+export function mirrorPoints(
+  points: Array<[number, number]>,
+  width: number,
+  height: number,
+  mirrorX: boolean,
+  mirrorY: boolean
+): Array<[number, number]> {
+  if (!mirrorX && !mirrorY) return points
+  const out: Array<[number, number]> = []
+  for (const [x, y] of points) {
+    out.push([x, y])
+    if (mirrorX) out.push([width - 1 - x, y])
+    if (mirrorY) out.push([x, height - 1 - y])
+    if (mirrorX && mirrorY) out.push([width - 1 - x, height - 1 - y])
+  }
+  return out
+}
+
+// ---------- regions (selection, copy and paste) ----------
+
+export interface Region {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+export function inRegion(region: Region | null, x: number, y: number): boolean {
+  return !region || (x >= region.x && y >= region.y && x < region.x + region.w && y < region.y + region.h)
+}
+
+/** Copies a rectangle of pixels out into its own buffer. Parts outside the canvas come back transparent. */
+export function extractRegion(buf: Uint8ClampedArray, width: number, height: number, r: Region): Uint8ClampedArray<ArrayBuffer> {
+  const out = new Uint8ClampedArray(r.w * r.h * 4)
+  for (let y = 0; y < r.h; y++) {
+    for (let x = 0; x < r.w; x++) {
+      const sx = r.x + x
+      const sy = r.y + y
+      if (sx < 0 || sy < 0 || sx >= width || sy >= height) continue
+      const si = (sy * width + sx) * 4
+      out.set(buf.subarray(si, si + 4), (y * r.w + x) * 4)
+    }
+  }
+  return out
+}
+
+export function clearRegion(buf: Uint8ClampedArray, width: number, height: number, r: Region): void {
+  for (let y = Math.max(0, r.y); y < Math.min(height, r.y + r.h); y++) {
+    buf.fill(0, (y * width + Math.max(0, r.x)) * 4, (y * width + Math.min(width, r.x + r.w)) * 4)
+  }
+}
+
+/**
+ * Draws `src` (w × h) onto `buf` at (x, y). With `replace` every pixel is copied,
+ * otherwise transparent source pixels leave the destination alone (a stamp).
+ */
+export function blitRegion(
+  buf: Uint8ClampedArray,
+  width: number,
+  height: number,
+  src: Uint8ClampedArray,
+  r: Region,
+  replace = false
+): void {
+  for (let y = 0; y < r.h; y++) {
+    const dy = r.y + y
+    if (dy < 0 || dy >= height) continue
+    for (let x = 0; x < r.w; x++) {
+      const dx = r.x + x
+      if (dx < 0 || dx >= width) continue
+      const si = (y * r.w + x) * 4
+      if (!replace && src[si + 3] === 0) continue
+      buf.set(src.subarray(si, si + 4), (dy * width + dx) * 4)
+    }
+  }
+}
+
+/** Flood fill that can't leak outside `region`. */
+export function floodFillInRegion(
+  buf: Uint8ClampedArray,
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+  color: RGBA,
+  region: Region | null
+): number {
+  if (!region) return floodFill(buf, width, height, x, y, color)
+  if (!inRegion(region, x, y)) return 0
+  const local = extractRegion(buf, width, height, region)
+  const changed = floodFill(local, region.w, region.h, x - region.x, y - region.y, color)
+  if (changed) blitRegion(buf, width, height, local, region, true)
+  return changed
+}
+
+/** Alpha-blends `src` over `dst` (same size), scaling the source alpha by `opacity`. */
+export function blendOver(dst: Uint8ClampedArray, src: Uint8ClampedArray, opacity = 1): void {
+  for (let i = 0; i < dst.length; i += 4) {
+    const sa = (src[i + 3] / 255) * opacity
+    if (sa === 0) continue
+    const da = dst[i + 3] / 255
+    const a = sa + da * (1 - sa)
+    for (let c = 0; c < 3; c++) dst[i + c] = (src[i + c] * sa + dst[i + c] * da * (1 - sa)) / a
+    dst[i + 3] = a * 255
+  }
+}

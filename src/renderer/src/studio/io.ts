@@ -74,6 +74,7 @@ export async function openInStudio(item: LibraryItem): Promise<void> {
 }
 
 export async function saveSprite(saveAs = false): Promise<void> {
+  useStudio.getState().commitFloating() // drop any lifted pixels so they're saved
   const studio = useStudio.getState()
   const app = useApp.getState()
   if (!studio.doc) return
@@ -104,6 +105,7 @@ export async function saveSprite(saveAs = false): Promise<void> {
 }
 
 export async function exportPng(scale: number): Promise<void> {
+  useStudio.getState().commitFloating()
   const { doc, name } = useStudio.getState()
   if (!doc) return
   const png = await pngBytes(doc, scale)

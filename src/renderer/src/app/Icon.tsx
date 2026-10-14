@@ -34,7 +34,19 @@ const PATHS = {
   file: 'M6 3h8l5 5v13H6zM14 3v5h5',
   rename: 'M4 20h4L19 9l-4-4L4 16zM13 7l4 4',
   sort: 'M7 4v16M4 17l3 3 3-3M17 20V4M14 7l3-3 3 3',
-  clear: 'M5 5l14 14M4 12a8 8 0 1 0 16 0 8 8 0 0 0-16 0'
+  clear: 'M5 5l14 14M4 12a8 8 0 1 0 16 0 8 8 0 0 0-16 0',
+  line: 'M5 19L19 5',
+  rect: 'M4 6h16v12H4z',
+  shapeFilled: 'M5 7h14v10H5z',
+  ellipse: 'M12 5c4.4 0 8 3.1 8 7s-3.6 7-8 7-8-3.1-8-7 3.6-7 8-7z',
+  select: 'M4 7V4h3M10 4h4M17 4h3v3M20 10v4M20 17v3h-3M14 20h-4M7 20H4v-3M4 14v-4',
+  mirrorX: 'M12 3v18M9 7L4 12l5 5zM15 7l5 5-5 5z',
+  mirrorY: 'M3 12h18M7 9l5-5 5 5zM7 15l5 5 5-5z',
+  eye: 'M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
+  eyeOff: 'M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4M6.6 6.6C3.9 8.3 2 12 2 12s3.6 7 10 7a9.6 9.6 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2',
+  arrowUp: 'M12 19V5M6 11l6-6 6 6',
+  arrowDown: 'M12 5v14M6 13l6 6 6-6',
+  merge: 'M12 4v10M8 10l4 4 4-4M5 19h14'
 } as const
 
 export type IconName = keyof typeof PATHS

@@ -32,12 +32,14 @@ export function App() {
     return window.api.onLibraryChanged(setLibrary)
   }, [setLibrary])
 
-  // The app menu owns Cmd+Z, so route Undo/Redo to text fields or the Studio.
+  // The app menu owns ⌘Z and ⌘A, so route them to text fields or the current screen.
   useEffect(
     () =>
       window.api.onMenuCommand((command) => {
+        const view = useApp.getState().view
         if (isTyping()) document.execCommand(command)
-        else if (useApp.getState().view === 'studio') useStudio.getState()[command]()
+        else if (command === 'selectAll') window.dispatchEvent(new Event(`${view}:selectAll`))
+        else if (view === 'studio') useStudio.getState()[command]()
       }),
     []
   )

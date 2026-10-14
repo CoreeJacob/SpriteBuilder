@@ -94,7 +94,7 @@ export function LibraryView() {
     return () => document.removeEventListener('paste', onPaste)
   })
 
-  // Keyboard: Delete moves to Trash, ⌘A selects everything shown, Esc clears.
+  // Keyboard: Delete moves to Trash, Esc clears; ⌘A (from the menu) selects everything shown.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (isTyping() || useApp.getState().prompt) return
@@ -102,15 +102,17 @@ export function LibraryView() {
       if ((e.key === 'Backspace' || e.key === 'Delete') && sel.length) {
         e.preventDefault()
         void confirmDelete(sel)
-      } else if (e.metaKey && e.key === 'a') {
-        e.preventDefault()
-        select(items.map((i) => i.path))
       } else if (e.key === 'Escape') {
         select([])
       }
     }
+    const onSelectAll = (): void => useApp.getState().select(items.map((i) => i.path))
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener('library:selectAll', onSelectAll)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('library:selectAll', onSelectAll)
+    }
   }, [items])
 
   const isFileDrag = (e: DragEvent): boolean => e.dataTransfer.types.includes('Files')
