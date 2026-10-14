@@ -246,7 +246,7 @@ textarea.input {
 }
 
 .slider {
-  width: 110px;
+  width: 90px;
   accent-color: var(--accent);
 }
 
@@ -336,7 +336,7 @@ textarea.input {
 
 .library {
   display: grid;
-  grid-template-columns: 230px 1fr 300px;
+  grid-template-columns: clamp(190px, 16vw, 230px) minmax(0, 1fr) clamp(250px, 22vw, 300px);
   height: 100%;
 }
 
@@ -462,6 +462,7 @@ textarea.input {
 .lib-header {
   display: flex;
   align-items: baseline;
+  min-height: 52px;
   gap: 10px;
   padding: 16px 18px 4px;
 }
@@ -470,6 +471,7 @@ textarea.input {
 }
 .toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   padding: 8px 18px 12px;
@@ -478,7 +480,9 @@ textarea.input {
   display: flex;
   align-items: center;
   gap: 6px;
-  width: 260px;
+  flex: 1 1 180px;
+  min-width: 160px;
+  max-width: 320px;
   height: 28px;
   padding: 0 8px;
   border: 1px solid var(--border);
@@ -499,6 +503,15 @@ textarea.input {
   font: inherit;
 }
 
+.view-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.lib-header .btn {
+  align-self: center;
+}
 .filter-panel {
   display: grid;
   gap: 10px;
@@ -906,6 +919,7 @@ textarea.input {
 }
 .studio-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   padding: 10px 14px;
@@ -1151,4 +1165,45 @@ textarea.input {
 }
 .custom-size .muted {
   padding-bottom: 5px;
+}
+
+/* ---------- tooltips ---------- */
+
+.tooltip {
+  position: fixed;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 280px;
+  padding: 5px 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: #0d0e12;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.35;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  transform: translate(-50%, -100%);
+  animation: tooltip-in 0.1s ease-out;
+}
+.tooltip.below {
+  transform: translate(-50%, 0);
+}
+.tooltip.right {
+  transform: translate(0, -50%);
+}
+.tooltip kbd {
+  padding: 1px 5px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--raised);
+  color: var(--muted);
+  font: 11px var(--mono);
+}
+@keyframes tooltip-in {
+  from {
+    opacity: 0;
+  }
 }

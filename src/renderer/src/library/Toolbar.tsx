@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from '@/app/Icon'
-import { attempt, useApp } from '@/app/store'
+import { useApp } from '@/app/store'
 import {
   ADDED_WITHIN,
   countActiveFilters,
@@ -25,7 +25,7 @@ export const SORT_LABELS: Record<SortKey, string> = {
   rating: 'Rating'
 }
 
-export function Toolbar({ tags, destFolder }: { tags: string[]; destFolder: string }) {
+export function Toolbar({ tags }: { tags: string[] }) {
   const filters = useApp((s) => s.filters)
   const setFilters = useApp((s) => s.setFilters)
   const sort = useApp((s) => s.sort)
@@ -100,31 +100,28 @@ export function Toolbar({ tags, destFolder }: { tags: string[]; destFolder: stri
           </label>
         )}
 
-        <div className="spacer" />
-
-        {layout === 'grid' && (
-          <input
-            className="slider"
-            type="range"
-            min={64}
-            max={256}
-            step={8}
-            value={thumbSize}
-            onChange={(e) => setThumbSize(Number(e.target.value))}
-            title="Thumbnail size"
-          />
-        )}
-        <div className="btn-group">
-          <button className={`btn ${layout === 'grid' ? 'on' : ''}`} onClick={() => setLayout('grid')} title="Grid">
-            <Icon name="grid" />
-          </button>
-          <button className={`btn ${layout === 'list' ? 'on' : ''}`} onClick={() => setLayout('list')} title="List">
-            <Icon name="list" />
-          </button>
+        <div className="view-controls">
+          {layout === 'grid' && (
+            <input
+              className="slider"
+              type="range"
+              min={64}
+              max={256}
+              step={8}
+              value={thumbSize}
+              onChange={(e) => setThumbSize(Number(e.target.value))}
+              title="Thumbnail size"
+            />
+          )}
+          <div className="btn-group">
+            <button className={`btn ${layout === 'grid' ? 'on' : ''}`} onClick={() => setLayout('grid')} title="Grid view">
+              <Icon name="grid" />
+            </button>
+            <button className={`btn ${layout === 'list' ? 'on' : ''}`} onClick={() => setLayout('list')} title="List view">
+              <Icon name="list" />
+            </button>
+          </div>
         </div>
-        <button className="btn primary" onClick={() => void attempt(() => window.api.importFiles(destFolder))}>
-          <Icon name="import" /> Import
-        </button>
       </div>
 
       {showFilters && <FilterPanel tags={tags} />}

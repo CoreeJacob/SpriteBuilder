@@ -6,6 +6,7 @@ import { StudioView } from '@/studio/StudioView'
 import { useStudio } from '@/studio/store'
 import { Icon, type IconName } from './Icon'
 import { PromptDialog, Toasts } from './Overlays'
+import { Tooltips } from './Tooltips'
 import { useApp, type View } from './store'
 
 const NAV: Array<{ view: View; label: string; icon: IconName }> = [
@@ -74,6 +75,7 @@ export function App() {
       </main>
       <PromptDialog />
       <Toasts />
+      <Tooltips />
     </div>
   )
 }

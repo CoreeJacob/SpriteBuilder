@@ -120,7 +120,10 @@ export class Library {
       if (!folder) throw new Error('The library root cannot be renamed')
       const target = joinRel(dirnameRel(folder), newName.trim())
       if (target === folder) return folder
-      if (await exists(this.abs(target))) throw new Error(`"${newName}" already exists`)
+      // A case-only rename ("Test FOlder" → "Test Folder") is fine on macOS's case-insensitive disks.
+      if (target.toLowerCase() !== folder.toLowerCase() && (await exists(this.abs(target)))) {
+        throw new Error(`"${newName}" already exists`)
+      }
       await fs.rename(this.abs(folder), this.abs(target))
       this.remapMeta((p) => (isInside(p, folder) ? target + p.slice(folder.length) : p))
       return target

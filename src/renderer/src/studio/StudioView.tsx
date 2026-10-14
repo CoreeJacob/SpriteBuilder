@@ -214,11 +214,11 @@ function ToolBox() {
           <Icon name={t.icon} size={20} />
         </button>
       ))}
-      <div className="color-pair" title="Left click paints the front colour, right click the back colour">
-        <label className="swatch-big primary" style={{ background: primary }}>
+      <div className="color-pair">
+        <label className="swatch-big primary" style={{ background: primary }} title={`Front colour ${primary} · left click paints with it`}>
           <input type="color" value={primary.slice(0, 7)} onChange={(e) => setPrimary(e.target.value)} />
         </label>
-        <label className="swatch-big secondary" style={{ background: secondary }}>
+        <label className="swatch-big secondary" style={{ background: secondary }} title={`Back colour ${secondary} · right click paints with it`}>
           <input type="color" value={secondary.slice(0, 7)} onChange={(e) => setSecondary(e.target.value)} />
         </label>
         <button className="swap" onClick={swapColors} title="Swap colours (X)">

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type DragEvent } from 'react'
 import { basenameRel } from '@shared/paths'
 import type { ImportedFile } from '@shared/types'
+import { Icon } from '@/app/Icon'
 import { attempt, useApp } from '@/app/store'
 import { formatBytes } from '@/lib/format'
 import { confirmDelete, DetailPanel } from './DetailPanel'
@@ -53,21 +54,32 @@ export function LibraryView() {
   const tags = useMemo(() => collectTags(library?.items ?? []), [library])
   const destFolder = scope.kind === 'folder' ? scope.path : ''
 
-  const importInto = async (files: ImportedFile[] | string[]): Promise<void> => {
-    if (!files.length) return
-    const added = await attempt(() =>
-      typeof files[0] === 'string'
-        ? window.api.importFiles(destFolder, files as string[])
-        : window.api.importData(destFolder, files as ImportedFile[])
-    )
+  const report = (added: string[] | undefined, quietIfNone = false): void => {
     if (!added) return
     if (added.length === 0) {
-      useApp.getState().notify('Nothing imported. Supported types are PNG, JPG, GIF, WebP, SVG and BMP.', 'error')
+      if (!quietIfNone) {
+        useApp.getState().notify('Nothing imported. Supported types are PNG, JPG, GIF, WebP, SVG and BMP.', 'error')
+      }
       return
     }
     useApp.getState().select(added)
     useApp.getState().notify(`Imported ${added.length} image${added.length === 1 ? '' : 's'}`)
   }
+
+  const importInto = async (files: ImportedFile[] | string[]): Promise<void> => {
+    if (!files.length) return
+    report(
+      await attempt(() =>
+        typeof files[0] === 'string'
+          ? window.api.importFiles(destFolder, files as string[])
+          : window.api.importData(destFolder, files as ImportedFile[])
+      )
+    )
+  }
+
+  // Cancelling the Open dialog also returns no files, so stay quiet in that case.
+  const importWithDialog = async (): Promise<void> =>
+    report(await attempt(() => window.api.importFiles(destFolder)), true)
 
   // Paste an image from the clipboard (e.g. a screenshot) into the current folder.
   useEffect(() => {
@@ -127,9 +139,17 @@ export function LibraryView() {
       <section className="lib-main">
         <header className="lib-header">
           <h1>{scopeTitle}</h1>
-          {scope.kind === 'folder' && scope.path && <span className="muted">{scope.path}</span>}
+          {scope.kind === 'folder' && scope.path.includes('/') && <span className="muted">{scope.path}</span>}
+          <div className="spacer" />
+          <button
+            className="btn primary"
+            onClick={() => void importWithDialog()}
+            title={`Copy images into “${destFolder || 'Library'}”`}
+          >
+            <Icon name="import" /> Import
+          </button>
         </header>
-        <Toolbar tags={tags} destFolder={destFolder} />
+        <Toolbar tags={tags} />
         <div
           className={`lib-items ${dropping ? 'dropping' : ''}`}
           onClick={() => useApp.getState().select([])}
