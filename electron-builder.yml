@@ -1,0 +1,14 @@
+appId: com.spritebuilder.app
+productName: SpriteBuilder
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**
+  - package.json
+mac:
+  category: public.app-category.graphics-design
+  icon: build/icon.png
+  target: dmg
+  # Built for your own Mac only, so no Apple signing identity is needed.
+  identity: null
