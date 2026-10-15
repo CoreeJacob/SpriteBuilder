@@ -46,7 +46,12 @@ const PATHS = {
   eyeOff: 'M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4M6.6 6.6C3.9 8.3 2 12 2 12s3.6 7 10 7a9.6 9.6 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2',
   arrowUp: 'M12 19V5M6 11l6-6 6 6',
   arrowDown: 'M12 5v14M6 13l6 6 6-6',
-  merge: 'M12 4v10M8 10l4 4 4-4M5 19h14'
+  merge: 'M12 4v10M8 10l4 4 4-4M5 19h14',
+  play: 'M7 5l12 7-12 7z',
+  stop: 'M7 7h10v10H7z',
+  prevFrame: 'M6 5v14M19 5l-10 7 10 7z',
+  nextFrame: 'M18 5v14M5 5l10 7-10 7z',
+  onion: 'M9 6a6 6 0 1 0 0 12M15 6a6 6 0 1 1 0 12M12 7.5a6 6 0 0 1 0 9'
 } as const
 
 export type IconName = keyof typeof PATHS

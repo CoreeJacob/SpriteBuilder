@@ -36,6 +36,17 @@ export function isInside(path: string, folder: string): boolean {
   return path === folder || path.startsWith(folder + '/')
 }
 
+/** Points a sprite sheet's frame data at the image file it was finally saved as. */
+export function withSheetImage(json: string, imageFile: string): string {
+  try {
+    const data = JSON.parse(json)
+    if (data && typeof data === 'object' && data.meta) data.meta.image = imageFile
+    return JSON.stringify(data, null, 2)
+  } catch {
+    return json
+  }
+}
+
 /** Rejects names that would escape a folder or create hidden files. */
 export function isValidName(name: string): boolean {
   const trimmed = name.trim()

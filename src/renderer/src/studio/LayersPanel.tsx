@@ -3,11 +3,26 @@ import { Icon } from '@/app/Icon'
 import type { SpriteDoc } from './model'
 import { useStudio } from './store'
 
+const LAYER_DRAG_TYPE = 'application/x-spritebuilder-layer'
+
+/** Top half of a row drops above it, bottom half below. */
+const dropPosition = (e: React.DragEvent<HTMLElement>): 'above' | 'below' => {
+  const rect = e.currentTarget.getBoundingClientRect()
+  return e.clientY < rect.top + rect.height / 2 ? 'above' : 'below'
+}
+
+interface DropTarget {
+  id: string
+  position: 'above' | 'below'
+}
+
 export function LayersPanel() {
   const doc = useStudio((s) => s.doc)!
   const layerId = useStudio((s) => s.layerId)
   useStudio((s) => s.version) // layers change in place; re-render on every edit
   const [editing, setEditing] = useState<string | null>(null)
+  const [dragging, setDragging] = useState<string | null>(null)
+  const [drop, setDrop] = useState<DropTarget | null>(null)
   const finishOpacity = useRef<(() => void) | null>(null)
   const s = useStudio.getState()
 
@@ -55,9 +70,44 @@ export function LayersPanel() {
         {[...doc.layers].reverse().map((layer) => (
           <div
             key={layer.id}
-            className={`layer-row ${layer.id === layerId ? 'active' : ''} ${layer.visible ? '' : 'hidden-layer'}`}
+            className={[
+              'layer-row',
+              layer.id === layerId ? 'active' : '',
+              layer.visible ? '' : 'hidden-layer',
+              layer.id === dragging ? 'dragging' : '',
+              drop?.id === layer.id ? `drop-${drop.position}` : ''
+            ].join(' ')}
             onClick={() => s.setActiveLayer(layer.id)}
             onDoubleClick={() => setEditing(layer.id)}
+            // Drag a row up or down to restack it.
+            draggable={editing !== layer.id}
+            onDragStart={(e) => {
+              e.dataTransfer.setData(LAYER_DRAG_TYPE, layer.id)
+              e.dataTransfer.effectAllowed = 'move'
+              setDragging(layer.id)
+            }}
+            onDragOver={(e) => {
+              if (!e.dataTransfer.types.includes(LAYER_DRAG_TYPE)) return
+              e.preventDefault()
+              e.dataTransfer.dropEffect = 'move'
+              const position = dropPosition(e)
+              if (drop?.id !== layer.id || drop.position !== position) setDrop({ id: layer.id, position })
+            }}
+            onDragLeave={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node)) setDrop(null)
+            }}
+            onDrop={(e) => {
+              e.preventDefault()
+              // Work the position out from the drop itself; the highlight state may lag a frame behind.
+              const id = e.dataTransfer.getData(LAYER_DRAG_TYPE)
+              if (id) s.moveLayerTo(id, layer.id, dropPosition(e))
+              setDrop(null)
+              setDragging(null)
+            }}
+            onDragEnd={() => {
+              setDrop(null)
+              setDragging(null)
+            }}
           >
             <button
               className="icon-btn eye"
@@ -84,7 +134,7 @@ export function LayersPanel() {
                 }}
               />
             ) : (
-              <span className="layer-name" title="Double-click to rename">
+              <span className="layer-name" title="Double-click to rename · drag to reorder">
                 {layer.name}
               </span>
             )}
@@ -119,13 +169,14 @@ export function LayersPanel() {
 function LayerThumb({ doc, layerId }: { doc: SpriteDoc; layerId: string }) {
   const ref = useRef<HTMLCanvasElement>(null)
   const version = useStudio((s) => s.version)
+  const frame = useStudio((s) => s.frame)
   useEffect(() => {
-    const cel = doc.frames[0]?.cels[layerId]
+    const cel = doc.frames[frame]?.cels[layerId]
     const canvas = ref.current
     if (!cel || !canvas) return
     canvas.width = doc.width
     canvas.height = doc.height
     canvas.getContext('2d')!.putImageData(new ImageData(cel.slice() as Uint8ClampedArray<ArrayBuffer>, doc.width, doc.height), 0, 0)
-  }, [doc, layerId, version])
+  }, [doc, layerId, version, frame])
   return <canvas ref={ref} className="layer-thumb checker" />
 }

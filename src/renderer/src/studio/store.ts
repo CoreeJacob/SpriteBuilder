@@ -3,6 +3,7 @@
 
 import { create } from 'zustand'
 import { History } from './history'
+import { addFrame, deleteFrame, duplicateFrame, moveFrame, setDuration, setFps } from './frames'
 import {
   addLayer,
   cloneState,
@@ -10,6 +11,7 @@ import {
   duplicateLayer,
   mergeDown,
   moveLayer,
+  moveLayerTo,
   restoreState,
   type DocState
 } from './layers'
@@ -23,7 +25,15 @@ export const SHAPE_TOOLS: Tool[] = ['line', 'rect', 'ellipse']
 
 type HistoryEntry =
   | { kind: 'cels'; frameId: string; layerId: string; before: Uint8ClampedArray; after: Uint8ClampedArray }
-  | { kind: 'doc'; before: DocState; after: DocState; layerBefore: string; layerAfter: string }
+  | {
+      kind: 'doc'
+      before: DocState
+      after: DocState
+      layerBefore: string
+      layerAfter: string
+      frameBefore: number
+      frameAfter: number
+    }
 
 /** Pixels lifted off the layer by the select tool, waiting to be dropped somewhere. */
 export interface Floating extends Region {
@@ -61,6 +71,8 @@ interface StudioState extends DocLocation {
   zoom: number
   showGrid: boolean
   tileMode: boolean
+  onionSkin: boolean
+  playing: boolean
   dirty: boolean
   canUndo: boolean
   canRedo: boolean
@@ -100,6 +112,7 @@ interface StudioState extends DocLocation {
   paste(image: ClipboardImage): void
 
   setActiveLayer(id: string): void
+  moveLayerTo(id: string, targetId: string, position: 'above' | 'below'): void
   addLayer(): void
   duplicateLayer(): void
   deleteLayer(): void
@@ -110,6 +123,17 @@ interface StudioState extends DocLocation {
   /** Starts a layer change made in steps (like dragging the opacity slider); call the result when finished. */
   beginLayerChange(): () => void
   setLayerOpacity(id: string, opacity: number): void
+
+  setFrame(index: number): void
+  stepFrame(direction: 1 | -1): void
+  addFrame(): void
+  duplicateFrame(): void
+  deleteFrame(): void
+  moveFrame(from: number, to: number): void
+  setFrameDuration(index: number, ms: number): void
+  setFps(fps: number): void
+  toggleOnionSkin(): void
+  togglePlaying(): void
 
   setZoom(zoom: number): void
   toggleGrid(): void
@@ -130,40 +154,65 @@ const history = new History<HistoryEntry>(100)
 const sameBytes = (a: Uint8ClampedArray, b: Uint8ClampedArray): boolean =>
   a.length === b.length && a.every((v, i) => v === b[i])
 
-const sameState = (a: DocState, b: DocState): boolean =>
+/** True when two snapshots match: layers, frame order and timing, and every pixel. */
+export const sameState = (a: DocState, b: DocState): boolean =>
   JSON.stringify(a.layers) === JSON.stringify(b.layers) &&
+  a.frames.length === b.frames.length &&
   a.frames.every((f, i) => {
     const g = b.frames[i]
     const ids = Object.keys(f.cels)
-    return g && ids.length === Object.keys(g.cels).length && ids.every((id) => g.cels[id] && sameBytes(f.cels[id], g.cels[id]))
+    return (
+      f.id === g.id &&
+      f.duration === g.duration &&
+      ids.length === Object.keys(g.cels).length &&
+      ids.every((id) => g.cels[id] && sameBytes(f.cels[id], g.cels[id]))
+    )
   })
 
 export const useStudio = create<StudioState>((set, get) => {
-  /** Applies a layer change as one undo step. `change` returns the layer to make active. */
-  const changeLayers = (change: (doc: SpriteDoc, active: string) => string): void => {
-    const { doc, layerId } = get()
+  /** Applies a layer or frame change as one undo step. */
+  const changeDoc = (change: (doc: SpriteDoc, at: { layerId: string; frame: number }) => { layerId?: string; frame?: number } | void): void => {
+    const { doc, layerId, frame } = get()
     if (!doc) return
     get().commitFloating()
     const before = cloneState(doc)
-    const next = change(doc, layerId)
+    const next = change(doc, { layerId, frame }) ?? {}
+    const nextLayer = next.layerId ?? layerId
+    const nextFrame = next.frame ?? frame
     const after = cloneState(doc)
-    if (sameState(before, after) && next === layerId) return
-    history.push({ kind: 'doc', before, after, layerBefore: layerId, layerAfter: next })
-    set({ layerId: next, canUndo: true, canRedo: false, dirty: true, version: get().version + 1 })
+    if (sameState(before, after) && nextLayer === layerId && nextFrame === frame) return
+    history.push({
+      kind: 'doc',
+      before,
+      after,
+      layerBefore: layerId,
+      layerAfter: nextLayer,
+      frameBefore: frame,
+      frameAfter: nextFrame
+    })
+    set({ layerId: nextLayer, frame: nextFrame, canUndo: true, canRedo: false, dirty: true, version: get().version + 1 })
   }
+  const changeLayers = (change: (doc: SpriteDoc, active: string) => string): void =>
+    changeDoc((doc, at) => ({ layerId: change(doc, at.layerId) }))
 
   const applyEntry = (entry: HistoryEntry, direction: 'undo' | 'redo'): void => {
     const doc = get().doc
     if (!doc) return
     if (entry.kind === 'cels') {
-      const cel = doc.frames.find((f) => f.id === entry.frameId)?.cels[entry.layerId]
+      const frameIndex = doc.frames.findIndex((f) => f.id === entry.frameId)
+      const cel = doc.frames[frameIndex]?.cels[entry.layerId]
       if (cel) cel.set(direction === 'undo' ? entry.before : entry.after)
-      // Show the layer that changed, so the undo is visible.
+      // Show the frame and layer that changed, so the undo is visible.
+      if (frameIndex !== -1) set({ frame: frameIndex })
       if (doc.layers.some((l) => l.id === entry.layerId)) set({ layerId: entry.layerId })
     } else {
       restoreState(doc, direction === 'undo' ? entry.before : entry.after)
       const wanted = direction === 'undo' ? entry.layerBefore : entry.layerAfter
-      set({ layerId: doc.layers.some((l) => l.id === wanted) ? wanted : doc.layers[doc.layers.length - 1].id })
+      const wantedFrame = direction === 'undo' ? entry.frameBefore : entry.frameAfter
+      set({
+        layerId: doc.layers.some((l) => l.id === wanted) ? wanted : doc.layers[doc.layers.length - 1].id,
+        frame: Math.min(wantedFrame, doc.frames.length - 1)
+      })
     }
     set({ canUndo: history.canUndo, canRedo: history.canRedo, dirty: true, version: get().version + 1 })
   }
@@ -185,6 +234,8 @@ export const useStudio = create<StudioState>((set, get) => {
     zoom: 16,
     showGrid: true,
     tileMode: false,
+    onionSkin: false,
+    playing: false,
     dirty: false,
     canUndo: false,
     canRedo: false,
@@ -207,6 +258,7 @@ export const useStudio = create<StudioState>((set, get) => {
         layerId: doc.layers[doc.layers.length - 1].id,
         selection: null,
         floating: null,
+        playing: false,
         zoom: fitZoom(doc.width, doc.height),
         dirty: false,
         canUndo: false,
@@ -396,6 +448,7 @@ export const useStudio = create<StudioState>((set, get) => {
       get().commitFloating()
       set({ layerId: id })
     },
+    moveLayerTo: (id, targetId, position) => changeLayers((doc, active) => (moveLayerTo(doc, id, targetId, position), active)),
     addLayer: () => changeLayers((doc, active) => addLayer(doc, active)),
     duplicateLayer: () => changeLayers((doc, active) => duplicateLayer(doc, active)),
     deleteLayer: () => changeLayers((doc, active) => deleteLayer(doc, active)),
@@ -422,7 +475,8 @@ export const useStudio = create<StudioState>((set, get) => {
       return () => {
         const after = cloneState(doc)
         if (sameState(before, after)) return
-        history.push({ kind: 'doc', before, after, layerBefore: layerId, layerAfter: get().layerId })
+        const frame = get().frame
+        history.push({ kind: 'doc', before, after, layerBefore: layerId, layerAfter: get().layerId, frameBefore: frame, frameAfter: frame })
         set({ canUndo: true, canRedo: false, dirty: true })
       }
     },
@@ -433,6 +487,29 @@ export const useStudio = create<StudioState>((set, get) => {
       layer.opacity = Math.max(0, Math.min(1, opacity))
       set({ dirty: true, version: get().version + 1 })
     },
+
+    // ---------- frames ----------
+
+    setFrame: (index) => {
+      const doc = get().doc
+      if (!doc) return
+      get().commitFloating()
+      set({ frame: Math.max(0, Math.min(doc.frames.length - 1, index)), version: get().version + 1 })
+    },
+    stepFrame: (direction) => {
+      const doc = get().doc
+      if (!doc) return
+      // Wraps around, like the animation does.
+      get().setFrame((get().frame + direction + doc.frames.length) % doc.frames.length)
+    },
+    addFrame: () => changeDoc((doc, at) => ({ frame: addFrame(doc, at.frame) })),
+    duplicateFrame: () => changeDoc((doc, at) => ({ frame: duplicateFrame(doc, at.frame) })),
+    deleteFrame: () => changeDoc((doc, at) => ({ frame: deleteFrame(doc, at.frame) })),
+    moveFrame: (from, to) => changeDoc((doc) => ({ frame: moveFrame(doc, from, to) })),
+    setFrameDuration: (index, ms) => changeDoc((doc) => setDuration(doc, index, ms)),
+    setFps: (fps) => changeDoc((doc) => setFps(doc, fps)),
+    toggleOnionSkin: () => set({ onionSkin: !get().onionSkin, version: get().version + 1 }),
+    togglePlaying: () => set({ playing: !get().playing }),
 
     setZoom: (zoom) => set({ zoom: Math.max(ZOOM_LEVELS[0], Math.min(ZOOM_LEVELS.at(-1)!, zoom)) }),
     toggleGrid: () => set({ showGrid: !get().showGrid }),

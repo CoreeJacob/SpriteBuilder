@@ -81,6 +81,10 @@ export interface SpriteBuilderApi {
   readProject(imagePath: string): Promise<string | null>
   saveSprite(request: SaveSpriteRequest): Promise<string>
   exportPng(defaultName: string, data: Uint8Array): Promise<string | null>
+  exportGif(defaultName: string, data: Uint8Array): Promise<string | null>
+  /** Saves a sprite-sheet PNG, plus its frame data as a .json file next to it when `json` is given. */
+  exportSheet(defaultName: string, png: Uint8Array, json: string | null): Promise<string | null>
+  saveSheetToLibrary(folder: string, name: string, png: Uint8Array, json: string | null): Promise<string>
 
   /** Absolute path of a file dropped from Finder. */
   getPathForFile(file: File): string

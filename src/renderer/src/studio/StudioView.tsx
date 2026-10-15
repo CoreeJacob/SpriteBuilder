@@ -2,8 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Icon, type IconName } from '@/app/Icon'
 import { useApp } from '@/app/store'
 import { readPastedImage, writeSystemClipboard } from './clipboard'
-import { confirmDiscard, exportPng, frameCanvas, saveSprite } from './io'
+import { confirmDiscard, exportGif, exportPng, frameCanvas, saveSprite } from './io'
 import { LayersPanel } from './LayersPanel'
+import { SheetDialog } from './SheetDialog'
+import { Timeline } from './Timeline'
 import { compositeFrame, MAX_SIZE } from './model'
 import { PALETTES, type Palette } from './palettes'
 import { PixelCanvas } from './PixelCanvas'
@@ -34,6 +36,7 @@ const isPowerOfTwo = (n: number): boolean => (n & (n - 1)) === 0
 export function StudioView() {
   const doc = useStudio((s) => s.doc)
   const [showNew, setShowNew] = useState(false)
+  const [showSheet, setShowSheet] = useState(false)
   const [hover, setHover] = useState<[number, number] | null>(null)
 
   useStudioShortcuts(() => setShowNew(true))
@@ -48,16 +51,20 @@ export function StudioView() {
 
   return (
     <div className="studio">
-      <StudioBar onNew={() => confirmDiscard() && setShowNew(true)} />
+      <StudioBar onNew={() => confirmDiscard() && setShowNew(true)} onSheet={() => setShowSheet(true)} />
       <div className="studio-body">
         <ToolBox />
-        <div className="canvas-viewport">
-          <div className="canvas-stage">
-            <PixelCanvas onHover={setHover} />
+        <div className="canvas-column">
+          <div className="canvas-viewport">
+            <div className="canvas-stage">
+              <PixelCanvas onHover={setHover} />
+            </div>
           </div>
+          <Timeline />
         </div>
         <SidePanel hover={hover} />
       </div>
+      {showSheet && <SheetDialog onClose={() => setShowSheet(false)} />}
       {showNew && (
         <div className="modal-backdrop" onMouseDown={() => setShowNew(false)}>
           <div className="modal wide" onMouseDown={(e) => e.stopPropagation()}>
@@ -114,6 +121,8 @@ function useStudioShortcuts(openNew: () => void): void {
       const tool = TOOLS.find((t) => t.key.toLowerCase() === key)
       if (tool) s.setTool(tool.tool)
       else if (key === 'f') s.toggleFillShapes()
+      else if (e.key === ',') s.stepFrame(-1)
+      else if (e.key === '.') s.stepFrame(1)
       else if (key === 'x') s.swapColors()
       else if (key === 't') s.toggleTileMode()
       else if (key === '=' || key === '+') stepZoom(1)
@@ -165,7 +174,7 @@ function stepZoom(direction: 1 | -1): void {
   setZoom(ZOOM_LEVELS[Math.max(0, Math.min(ZOOM_LEVELS.length - 1, i + direction))])
 }
 
-function StudioBar({ onNew }: { onNew: () => void }) {
+function StudioBar({ onNew, onSheet }: { onNew: () => void; onSheet: () => void }) {
   const name = useStudio((s) => s.name)
   const dirty = useStudio((s) => s.dirty)
   const folder = useStudio((s) => s.folder)
@@ -178,7 +187,6 @@ function StudioBar({ onNew }: { onNew: () => void }) {
   const canUndo = useStudio((s) => s.canUndo)
   const canRedo = useStudio((s) => s.canRedo)
   const folders = useApp((s) => s.library?.folders ?? [])
-  const [scale, setScale] = useState(4)
   const s = useStudio.getState()
 
   return (
@@ -192,18 +200,7 @@ function StudioBar({ onNew }: { onNew: () => void }) {
       <button className="btn" onClick={() => void saveSprite(true)} title="Save as a new sprite (⇧⌘S)">
         Save As…
       </button>
-      <div className="btn-group">
-        <button className="btn" onClick={() => void exportPng(scale)} title="Export a PNG file anywhere on your Mac">
-          <Icon name="export" /> Export PNG
-        </button>
-        <select className="select" value={scale} onChange={(e) => setScale(Number(e.target.value))} title="Export scale">
-          {EXPORT_SCALES.map((n) => (
-            <option key={n} value={n}>
-              {n}×
-            </option>
-          ))}
-        </select>
-      </div>
+      <ExportMenu onSheet={onSheet} />
 
       <div className="doc-title">
         <span className="doc-name">
@@ -267,6 +264,48 @@ function StudioBar({ onNew }: { onNew: () => void }) {
   )
 }
 
+function ExportMenu({ onSheet }: { onSheet: () => void }) {
+  const frames = useStudio((s) => s.doc?.frames.length ?? 1)
+  const [open, setOpen] = useState(false)
+  const [scale, setScale] = useState(4)
+  const run = (action: () => void): void => {
+    setOpen(false)
+    action()
+  }
+  return (
+    <div className="menu-anchor">
+      <button className={`btn ${open ? 'on' : ''}`} onClick={() => setOpen(!open)} title="Export to a file on your Mac">
+        <Icon name="export" /> Export
+      </button>
+      {open && (
+        <>
+          <div className="menu-scrim" onMouseDown={() => setOpen(false)} />
+          <div className="dropdown">
+            <div className="dropdown-label">Scale</div>
+            <div className="filter-options">
+              {EXPORT_SCALES.map((n) => (
+                <button key={n} className={`chip ${scale === n ? 'on' : ''}`} onClick={() => setScale(n)}>
+                  {n}×
+                </button>
+              ))}
+            </div>
+            <div className="dropdown-sep" />
+            <button className="dropdown-item" onClick={() => run(() => void exportPng(scale))}>
+              <Icon name="file" /> PNG image <span className="muted small">{frames > 1 ? 'this frame' : ''}</span>
+            </button>
+            <button className="dropdown-item" onClick={() => run(() => void exportGif(scale))}>
+              <Icon name="play" /> Animated GIF <span className="muted small">{frames} frame{frames === 1 ? '' : 's'}</span>
+            </button>
+            <button className="dropdown-item" onClick={() => run(onSheet)}>
+              <Icon name="grid" /> Sprite sheet… <span className="muted small">PNG + JSON</span>
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 function ToolBox() {
   const tool = useStudio((s) => s.tool)
   const primary = useStudio((s) => s.primary)
@@ -318,7 +357,33 @@ function SidePanel({ hover }: { hover: [number, number] | null }) {
   const previewRef = useRef<HTMLCanvasElement>(null)
   const { setPrimary, setSecondary, setPalette, addToPalette, removeFromPalette } = useStudio.getState()
 
-  const used = useMemo(() => uniqueColors(compositeFrame(doc, 0)), [doc, version])
+  const frame = useStudio((s) => s.frame)
+  const playing = useStudio((s) => s.playing)
+  const [tick, setTick] = useState(0)
+
+  // While playing, step through the frames using each frame's own duration.
+  useEffect(() => {
+    if (!playing) return
+    let i = frame
+    let timer: ReturnType<typeof setTimeout>
+    const step = (): void => {
+      setTick(i)
+      timer = setTimeout(() => {
+        i = (i + 1) % doc.frames.length
+        step()
+      }, doc.frames[i]?.duration ?? 100)
+    }
+    step()
+    return () => clearTimeout(timer)
+  }, [playing, doc, frame])
+  const shown = playing ? Math.min(tick, doc.frames.length - 1) : frame
+
+  // Colours across every frame, so the palette view covers the whole animation.
+  const used = useMemo(() => {
+    const all = new Uint8ClampedArray(doc.width * doc.height * 4 * doc.frames.length)
+    doc.frames.forEach((_, i) => all.set(compositeFrame(doc, i), i * doc.width * doc.height * 4))
+    return uniqueColors(all)
+  }, [doc, version])
 
   // Live preview at a whole-number scale that fits the panel.
   useEffect(() => {
@@ -326,14 +391,14 @@ function SidePanel({ hover }: { hover: [number, number] | null }) {
     if (!canvas) return
     const repeat = tiled ? 3 : 1
     const scale = Math.max(1, Math.floor(200 / (Math.max(doc.width, doc.height) * repeat)))
-    const frame = frameCanvas(doc, 0, scale)
-    canvas.width = frame.width * repeat
-    canvas.height = frame.height * repeat
+    const image = frameCanvas(doc, shown, scale)
+    canvas.width = image.width * repeat
+    canvas.height = image.height * repeat
     const ctx = canvas.getContext('2d')!
     ctx.imageSmoothingEnabled = false
     // Pixels being moved by the select tool aren't on the layer yet; draw them on top.
     let lifted: HTMLCanvasElement | null = null
-    if (floating) {
+    if (floating && shown === frame) {
       lifted = document.createElement('canvas')
       lifted.width = floating.w
       lifted.height = floating.h
@@ -341,20 +406,20 @@ function SidePanel({ hover }: { hover: [number, number] | null }) {
     }
     for (let y = 0; y < repeat; y++) {
       for (let x = 0; x < repeat; x++) {
-        const ox = x * frame.width
-        const oy = y * frame.height
-        ctx.drawImage(frame, ox, oy)
+        const ox = x * image.width
+        const oy = y * image.height
+        ctx.drawImage(image, ox, oy)
         if (lifted && floating) {
           ctx.save()
           ctx.beginPath()
-          ctx.rect(ox, oy, frame.width, frame.height)
+          ctx.rect(ox, oy, image.width, image.height)
           ctx.clip()
           ctx.drawImage(lifted, ox + floating.x * scale, oy + floating.y * scale, floating.w * scale, floating.h * scale)
           ctx.restore()
         }
       }
     }
-  }, [doc, version, tiled, floating])
+  }, [doc, version, tiled, floating, shown, frame])
 
   const sizeHint = !isPowerOfTwo(doc.width) || !isPowerOfTwo(doc.height)
 
@@ -362,7 +427,16 @@ function SidePanel({ hover }: { hover: [number, number] | null }) {
     <aside className="studio-panel">
       <section>
         <div className="panel-heading">
-          <span>Preview</span>
+          <span>
+            Preview
+            {doc.frames.length > 1 && (
+              <span className="preview-frame">
+                {' '}
+                · {shown + 1}/{doc.frames.length}
+                {playing ? ' ▶' : ''}
+              </span>
+            )}
+          </span>
           <label className="check small">
             <input type="checkbox" checked={tiled} onChange={(e) => setTiled(e.target.checked)} /> Tiled 3×3
           </label>

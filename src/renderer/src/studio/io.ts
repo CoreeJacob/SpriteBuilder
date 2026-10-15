@@ -4,6 +4,7 @@ import { stripExt } from '@shared/paths'
 import type { LibraryItem } from '@shared/types'
 import { attempt, useApp } from '@/app/store'
 import { itemUrl, loadImage } from '@/lib/fileUrl'
+import { encodeGif } from './exporters'
 import { compositeFrame, docFromPixels, MAX_SIZE, parseDoc, serializeDoc, type SpriteDoc } from './model'
 import { useStudio } from './store'
 
@@ -23,8 +24,8 @@ export function frameCanvas(doc: SpriteDoc, frame = 0, scale = 1): HTMLCanvasEle
   return out
 }
 
-export async function pngBytes(doc: SpriteDoc, scale = 1): Promise<Uint8Array> {
-  const blob = await new Promise<Blob | null>((resolve) => frameCanvas(doc, 0, scale).toBlob(resolve, 'image/png'))
+export async function pngBytes(doc: SpriteDoc, scale = 1, frame = 0): Promise<Uint8Array> {
+  const blob = await new Promise<Blob | null>((resolve) => frameCanvas(doc, frame, scale).toBlob(resolve, 'image/png'))
   if (!blob) throw new Error('Could not encode the PNG')
   return new Uint8Array(await blob.arrayBuffer())
 }
@@ -104,12 +105,22 @@ export async function saveSprite(saveAs = false): Promise<void> {
   app.notify(`Saved ${fileName}`)
 }
 
+/** Exports the frame being edited as a PNG. */
 export async function exportPng(scale: number): Promise<void> {
+  useStudio.getState().commitFloating()
+  const { doc, name, frame } = useStudio.getState()
+  if (!doc) return
+  const png = await pngBytes(doc, scale, frame)
+  const suffix = `${doc.frames.length > 1 ? `-${frame + 1}` : ''}${scale === 1 ? '' : `@${scale}x`}`
+  const saved = await attempt(() => window.api.exportPng(`${name}${suffix}.png`, png))
+  if (saved) useApp.getState().notify(`Exported ${saved.slice(saved.lastIndexOf('/') + 1)}`)
+}
+
+export async function exportGif(scale: number): Promise<void> {
   useStudio.getState().commitFloating()
   const { doc, name } = useStudio.getState()
   if (!doc) return
-  const png = await pngBytes(doc, scale)
-  const suffix = scale === 1 ? '' : `@${scale}x`
-  const saved = await attempt(() => window.api.exportPng(`${name}${suffix}.png`, png))
+  const gif = encodeGif(doc, scale)
+  const saved = await attempt(() => window.api.exportGif(`${name}${scale === 1 ? '' : `@${scale}x`}.gif`, gif))
   if (saved) useApp.getState().notify(`Exported ${saved.slice(saved.lastIndexOf('/') + 1)}`)
 }

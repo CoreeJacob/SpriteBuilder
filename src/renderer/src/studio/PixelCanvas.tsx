@@ -45,6 +45,8 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
   const floating = useStudio((s) => s.floating)
   const mirrorX = useStudio((s) => s.mirrorX)
   const mirrorY = useStudio((s) => s.mirrorY)
+  const frame = useStudio((s) => s.frame)
+  const onionSkin = useStudio((s) => s.onionSkin)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const drag = useRef<Drag | null>(null)
   const lastClick = useRef<Cell | null>(null)
@@ -85,7 +87,25 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
       c.getContext('2d')!.putImageData(new ImageData(pixels, w, h), 0, 0)
       return c
     }
-    const source = toCanvas(compositeFrame(doc, 0), doc.width, doc.height)
+    const source = toCanvas(compositeFrame(doc, frame), doc.width, doc.height)
+
+    // Onion skin: the previous frame tinted red and the next tinted blue, faintly
+    // underneath. It wraps around, since most game animations loop.
+    const onion: Array<{ canvas: HTMLCanvasElement; alpha: number }> = []
+    if (onionSkin && doc.frames.length > 1) {
+      const neighbours = [
+        { index: (frame - 1 + doc.frames.length) % doc.frames.length, tint: 'rgb(255, 70, 90)' },
+        { index: (frame + 1) % doc.frames.length, tint: 'rgb(70, 150, 255)' }
+      ]
+      for (const n of doc.frames.length === 2 ? neighbours.slice(0, 1) : neighbours) {
+        const c = toCanvas(compositeFrame(doc, n.index), doc.width, doc.height)
+        const cx = c.getContext('2d')!
+        cx.globalCompositeOperation = 'source-atop'
+        cx.fillStyle = n.tint
+        cx.fillRect(0, 0, c.width, c.height)
+        onion.push({ canvas: c, alpha: 0.35 })
+      }
+    }
     const lifted = floating ? toCanvas(floating.pixels.slice() as Uint8ClampedArray<ArrayBuffer>, floating.w, floating.h) : null
 
     const tileW = doc.width * zoom
@@ -96,6 +116,11 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
 
     for (let ty = 0; ty < repeat; ty++) {
       for (let tx = 0; tx < repeat; tx++) {
+        for (const o of onion) {
+          ctx.globalAlpha = o.alpha
+          ctx.drawImage(o.canvas, tx * tileW, ty * tileH, tileW, tileH)
+          ctx.globalAlpha = 1
+        }
         ctx.drawImage(source, tx * tileW, ty * tileH, tileW, tileH)
         if (lifted && floating) {
           ctx.save()
@@ -175,7 +200,7 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
       ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)'
       ctx.strokeRect(hx * zoom - 0.5, hy * zoom - 0.5, zoom + 1, zoom + 1)
     }
-  }, [doc, version, zoom, showGrid, tileMode, repeat, hover, selection, floating, mirrorX, mirrorY, tool])
+  }, [doc, version, zoom, showGrid, tileMode, repeat, hover, selection, floating, mirrorX, mirrorY, tool, frame, onionSkin])
 
   if (!doc) return null
   const W = doc.width

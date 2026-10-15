@@ -30,6 +30,9 @@ const api: SpriteBuilderApi = {
   readProject: (path) => ipcRenderer.invoke('sprite:readProject', path),
   saveSprite: (request) => ipcRenderer.invoke('sprite:save', request),
   exportPng: (name, data) => ipcRenderer.invoke('sprite:exportPng', name, data),
+  exportGif: (name, data) => ipcRenderer.invoke('sprite:exportGif', name, data),
+  exportSheet: (name, png, json) => ipcRenderer.invoke('sprite:exportSheet', name, png, json),
+  saveSheetToLibrary: (folder, name, png, json) => ipcRenderer.invoke('sprite:saveSheetToLibrary', folder, name, png, json),
 
   getPathForFile: (file) => webUtils.getPathForFile(file),
   onMenuCommand: (callback) => subscribe<MenuCommand>('menu:command', callback)

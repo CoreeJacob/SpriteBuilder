@@ -15,7 +15,8 @@ import {
   joinRel,
   projectPathFor,
   stripExt,
-  uniqueName
+  uniqueName,
+  withSheetImage
 } from '@shared/paths'
 import {
   IMAGE_EXTENSIONS,
@@ -271,7 +272,32 @@ export class Library {
     })
   }
 
+  /** Saves a sprite sheet (and its frame data) into a library folder. Returns the PNG's path. */
+  saveSheet(folder: string, name: string, png: Uint8Array, json: string | null): Promise<string> {
+    return this.mutate(async () => {
+      this.assertName(name)
+      const taken = new Set((await fs.readdir(this.abs(folder)).catch(() => [] as string[])).map((n) => n.toLowerCase()))
+      // Neither the PNG nor its JSON may overwrite an existing file.
+      const base = stripExt(
+        uniqueName(`${stripExt(name.trim())}.png`, (c) => taken.has(c.toLowerCase()) || taken.has(`${stripExt(c)}.json`.toLowerCase()))
+      )
+      const rel = joinRel(folder, `${base}.png`)
+      await fs.writeFile(this.abs(rel), png)
+      if (json !== null) await fs.writeFile(this.abs(joinRel(folder, `${base}.json`)), withSheetImage(json, `${base}.png`), 'utf8')
+      return rel
+    })
+  }
+
   // ---------- internals ----------
+
+  private async projectFrameCount(project: string): Promise<number | null> {
+    try {
+      const raw = JSON.parse(await fs.readFile(this.abs(project), 'utf8'))
+      return Array.isArray(raw.frames) && raw.frames.length > 0 ? raw.frames.length : null
+    } catch {
+      return null
+    }
+  }
 
   /** Runs tasks one at a time so scans and edits never interleave. */
   private serial<T>(task: () => Promise<T>): Promise<T> {
@@ -392,15 +418,18 @@ export class Library {
         Object.assign(meta, { size, modifiedAt, width: null, height: null, frames: null, colorCount: null })
         changed = true
       }
+      const project = projectOf(rel)
+      const hasProject = project !== null && projects.has(project.toLowerCase())
       if (meta.frames === null && size <= MAX_FRAME_SCAN_BYTES) {
-        const bytes = await fs.readFile(this.abs(rel)).catch(() => null)
-        if (bytes) {
-          meta.frames = countFrames(bytes, extOf(rel))
+        // A Studio sprite's PNG only holds its first frame; the project knows how many there are.
+        const fromProject = hasProject ? await this.projectFrameCount(project) : null
+        const bytes = fromProject ? null : await fs.readFile(this.abs(rel)).catch(() => null)
+        if (fromProject || bytes) {
+          meta.frames = fromProject ?? countFrames(bytes!, extOf(rel))
           changed = true
         }
       }
-      const project = projectOf(rel)
-      items.push(this.toItem(rel, meta, project !== null && projects.has(project.toLowerCase())))
+      items.push(this.toItem(rel, meta, hasProject))
     }
 
     for (const rel of Object.keys(this.index.items)) {

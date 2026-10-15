@@ -67,6 +67,17 @@ export function moveLayer(doc: SpriteDoc, id: string, direction: 1 | -1): string
   return id
 }
 
+/** Drag and drop: puts a layer directly above or below another one. */
+export function moveLayerTo(doc: SpriteDoc, id: string, targetId: string, position: 'above' | 'below'): string {
+  if (id === targetId) return id
+  const i = indexOf(doc, id)
+  if (i === -1 || indexOf(doc, targetId) === -1) return id
+  const [layer] = doc.layers.splice(i, 1)
+  const t = indexOf(doc, targetId)
+  doc.layers.splice(position === 'above' ? t + 1 : t, 0, layer)
+  return id
+}
+
 /** Blends a layer into the one below it (keeping its opacity) and removes it. */
 export function mergeDown(doc: SpriteDoc, id: string): string {
   const i = indexOf(doc, id)

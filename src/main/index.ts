@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { app, BrowserWindow, dialog, ipcMain, Menu, net, protocol, shell } from 'electron'
-import { basenameRel } from '@shared/paths'
+import { basenameRel, withSheetImage } from '@shared/paths'
 import {
   IMAGE_EXTENSIONS,
   type ComputedMeta,
@@ -205,15 +205,32 @@ function registerIpc(): void {
 
   handle('sprite:readProject', (p: string) => lib().readProject(p))
   handle('sprite:save', (request: SaveSpriteRequest) => lib().saveSprite(request))
+  const saveAs = async (defaultName: string, filter: { name: string; extensions: string[] }): Promise<string | null> => {
+    const result = await dialog.showSaveDialog(mainWindow!, { defaultPath: defaultName, filters: [filter] })
+    return result.canceled || !result.filePath ? null : result.filePath
+  }
+
   handle('sprite:exportPng', async (defaultName: string, data: Uint8Array) => {
-    const result = await dialog.showSaveDialog(mainWindow!, {
-      defaultPath: defaultName,
-      filters: [{ name: 'PNG Image', extensions: ['png'] }]
-    })
-    if (result.canceled || !result.filePath) return null
-    await fs.writeFile(result.filePath, data)
-    return result.filePath
+    const file = await saveAs(defaultName, { name: 'PNG Image', extensions: ['png'] })
+    if (file) await fs.writeFile(file, data)
+    return file
   })
+  handle('sprite:exportGif', async (defaultName: string, data: Uint8Array) => {
+    const file = await saveAs(defaultName, { name: 'Animated GIF', extensions: ['gif'] })
+    if (file) await fs.writeFile(file, data)
+    return file
+  })
+  handle('sprite:exportSheet', async (defaultName: string, png: Uint8Array, json: string | null) => {
+    const file = await saveAs(defaultName, { name: 'PNG Sprite Sheet', extensions: ['png'] })
+    if (!file) return null
+    await fs.writeFile(file, png)
+    // The frame data goes next to the image with the same name, as engines expect.
+    if (json !== null) await fs.writeFile(file.replace(/\.png$/i, '') + '.json', withSheetImage(json, path.basename(file)), 'utf8')
+    return file
+  })
+  handle('sprite:saveSheetToLibrary', (folder: string, name: string, png: Uint8Array, json: string | null) =>
+    lib().saveSheet(folder, name, png, json)
+  )
 }
 
 app.whenReady().then(async () => {
