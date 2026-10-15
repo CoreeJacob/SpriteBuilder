@@ -7,6 +7,7 @@ import type { LibrarySnapshot } from '@shared/types'
 import { DEFAULT_FILTERS, type LibraryFilters, type Scope, type SortOrder } from '@/library/filter'
 
 export type View = 'library' | 'editor' | 'studio'
+export type Theme = 'system' | 'dark' | 'light'
 export type LayoutMode = 'grid' | 'list'
 
 export interface Toast {
@@ -46,6 +47,12 @@ interface AppState {
 
   toasts: Toast[]
   prompt: PromptRequest | null
+  showShortcuts: boolean
+  setShowShortcuts(open: boolean): void
+  theme: Theme
+  /** What "system" currently means, so canvases can redraw when macOS switches. */
+  resolvedTheme: 'dark' | 'light'
+  setTheme(theme: Theme): void
 
   setView(view: View): void
   setLibrary(snapshot: LibrarySnapshot): void
@@ -76,6 +83,7 @@ export const selectFolders = (s: { library: LibrarySnapshot | null }): string[] 
 const PREFS_KEY = 'spritebuilder.prefs'
 
 interface Prefs {
+  theme: Theme
   layout: LayoutMode
   thumbSize: number
   sort: SortOrder
@@ -92,6 +100,7 @@ function loadPrefs(): Partial<Prefs> {
 
 function savePrefs(state: AppState): void {
   const prefs: Prefs = {
+    theme: state.theme,
     layout: state.layout,
     thumbSize: state.thumbSize,
     sort: state.sort,
@@ -105,6 +114,12 @@ function savePrefs(state: AppState): void {
 }
 
 const prefs = loadPrefs()
+
+const systemIsLight = (): boolean =>
+  typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-color-scheme: light)').matches
+function resolveTheme(theme: Theme): 'dark' | 'light' {
+  return theme === 'system' ? (systemIsLight() ? 'light' : 'dark') : theme
+}
 let toastId = 0
 
 export const useApp = create<AppState>((set, get) => ({
@@ -122,6 +137,14 @@ export const useApp = create<AppState>((set, get) => ({
 
   toasts: [],
   prompt: null,
+  showShortcuts: false,
+  setShowShortcuts: (showShortcuts) => set({ showShortcuts }),
+  theme: prefs.theme ?? 'dark',
+  resolvedTheme: resolveTheme(prefs.theme ?? 'dark'),
+  setTheme: (theme) => {
+    set({ theme, resolvedTheme: resolveTheme(theme) })
+    savePrefs(get())
+  },
 
   setView: (view) => set({ view }),
   setLibrary: (library) => {

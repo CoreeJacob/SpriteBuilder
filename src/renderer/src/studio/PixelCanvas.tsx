@@ -47,6 +47,7 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
   const mirrorY = useStudio((s) => s.mirrorY)
   const frame = useStudio((s) => s.frame)
   const onionSkin = useStudio((s) => s.onionSkin)
+  const resolvedTheme = useApp((s) => s.resolvedTheme)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const drag = useRef<Drag | null>(null)
   const lastClick = useRef<Cell | null>(null)
@@ -78,6 +79,14 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
 
     const ctx = canvas.getContext('2d')!
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    // Grid and overlay colours come from the current theme.
+    const css = getComputedStyle(document.documentElement)
+    const theme = {
+      grid: css.getPropertyValue('--canvas-grid').trim(),
+      gridMajor: css.getPropertyValue('--canvas-grid-major').trim(),
+      dim: css.getPropertyValue('--canvas-dim').trim(),
+      tileEdge: css.getPropertyValue('--canvas-tile-edge').trim()
+    }
     ctx.imageSmoothingEnabled = false
 
     const toCanvas = (pixels: Uint8ClampedArray<ArrayBuffer>, w: number, h: number): HTMLCanvasElement => {
@@ -134,7 +143,7 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
     }
     if (tileMode) {
       // Dim the copies so the real tile in the middle stands out.
-      ctx.fillStyle = 'rgba(20, 21, 26, 0.45)'
+      ctx.fillStyle = theme.dim
       ctx.fillRect(0, 0, cssW, tileH)
       ctx.fillRect(0, tileH * 2, cssW, tileH)
       ctx.fillRect(0, tileH, tileW, tileH)
@@ -143,15 +152,15 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
 
     if (showGrid && zoom >= 4) {
       const hair = 1 / dpr
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.07)'
+      ctx.fillStyle = theme.grid
       for (let x = 0; x <= doc.width * repeat; x++) ctx.fillRect(x * zoom, 0, hair, cssH)
       for (let y = 0; y <= doc.height * repeat; y++) ctx.fillRect(0, y * zoom, cssW, hair)
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.18)'
+      ctx.fillStyle = theme.gridMajor
       for (let x = 0; x <= doc.width * repeat; x += MAJOR_GRID) ctx.fillRect(x * zoom, 0, hair, cssH)
       for (let y = 0; y <= doc.height * repeat; y += MAJOR_GRID) ctx.fillRect(0, y * zoom, cssW, hair)
     }
     if (tileMode) {
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)'
+      ctx.strokeStyle = theme.tileEdge
       ctx.lineWidth = 1
       ctx.strokeRect(tileW + 0.5, tileH + 0.5, tileW - 1, tileH - 1)
     }
@@ -200,7 +209,7 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
       ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)'
       ctx.strokeRect(hx * zoom - 0.5, hy * zoom - 0.5, zoom + 1, zoom + 1)
     }
-  }, [doc, version, zoom, showGrid, tileMode, repeat, hover, selection, floating, mirrorX, mirrorY, tool, frame, onionSkin])
+  }, [doc, version, zoom, showGrid, tileMode, repeat, hover, selection, floating, mirrorX, mirrorY, tool, frame, onionSkin, resolvedTheme])
 
   if (!doc) return null
   const W = doc.width

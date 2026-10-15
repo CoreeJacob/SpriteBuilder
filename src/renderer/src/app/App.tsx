@@ -10,9 +10,11 @@ import { useStudio } from '@/studio/store'
 import { Icon, type IconName } from './Icon'
 import { syncOpenDocuments } from './openDocuments'
 import { PromptDialog, Toasts } from './Overlays'
+import { backupLibrary, restoreLibrary } from './libraryActions'
 import { RecoveryDialog } from './RecoveryDialog'
+import { ShortcutsDialog } from './ShortcutsDialog'
 import { Tooltips } from './Tooltips'
-import { useApp, type View } from './store'
+import { useApp, type Theme, type View } from './store'
 
 const NAV: Array<{ view: View; label: string; icon: IconName }> = [
   { view: 'library', label: 'Library', icon: 'library' },
@@ -47,6 +49,9 @@ export function App() {
     () =>
       window.api.onMenuCommand((command) => {
         const view = useApp.getState().view
+        if (command === 'backup') return void backupLibrary()
+        if (command === 'restore') return void restoreLibrary()
+        if (command === 'shortcuts') return useApp.getState().setShowShortcuts(!useApp.getState().showShortcuts)
         if (isTyping()) document.execCommand(command)
         else if (command === 'selectAll') window.dispatchEvent(new Event(`${view}:selectAll`))
         else if (view === 'studio') useStudio.getState()[command]()
@@ -59,6 +64,28 @@ export function App() {
   useEffect(() => {
     window.onbeforeunload = dirty ? () => false : null
   }, [dirty])
+
+  // Theme: tag <html> so the CSS picks the colours, and follow macOS while on "System".
+  const theme = useApp((s) => s.theme)
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+    const media = window.matchMedia('(prefers-color-scheme: light)')
+    const sync = (): void => useApp.setState({ resolvedTheme: theme === 'system' ? (media.matches ? 'light' : 'dark') : theme })
+    sync()
+    media.addEventListener('change', sync)
+    return () => media.removeEventListener('change', sync)
+  }, [theme])
+
+  // "?" opens the shortcuts list from anywhere (except while typing).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== '?' || isTyping() || useApp.getState().prompt) return
+      e.preventDefault()
+      useApp.getState().setShowShortcuts(true)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   useEnrichment(library?.items)
   useStudioAutosave()
@@ -89,6 +116,8 @@ export function App() {
             )}
           </button>
         ))}
+        <div className="rail-spacer" />
+        <ThemeButton />
       </nav>
       <main className="content">
         {view === 'library' && <LibraryView />}
@@ -99,6 +128,7 @@ export function App() {
       <Toasts />
       <Tooltips />
       <RecoveryDialog />
+      <ShortcutsDialog />
     </div>
   )
 }
@@ -112,5 +142,26 @@ function BrandMark() {
         [...row].map((c, x) => (c === '#' ? <rect key={`${x}-${y}`} x={x} y={y} width="1" height="1" fill="currentColor" /> : null))
       )}
     </svg>
+  )
+}
+
+const THEMES: Array<{ theme: Theme; label: string; icon: IconName }> = [
+  { theme: 'system', label: 'System', icon: 'themeAuto' },
+  { theme: 'dark', label: 'Dark', icon: 'moon' },
+  { theme: 'light', label: 'Light', icon: 'sun' }
+]
+
+/** Cycles System → Dark → Light. */
+function ThemeButton() {
+  const theme = useApp((s) => s.theme)
+  const setTheme = useApp((s) => s.setTheme)
+  const i = THEMES.findIndex((t) => t.theme === theme)
+  const current = THEMES[i]
+  const next = THEMES[(i + 1) % THEMES.length]
+  return (
+    <button className="rail-btn theme-btn" onClick={() => setTheme(next.theme)} title={`Theme: ${current.label} · click for ${next.label}`}>
+      <Icon name={current.icon} size={18} />
+      <span>{current.label}</span>
+    </button>
   )
 }

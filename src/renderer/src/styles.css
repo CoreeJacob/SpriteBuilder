@@ -13,10 +13,61 @@
   --star: #ffcb47;
   --checker-a: #2a2d36;
   --checker-b: #22242c;
+  /* Colours the pixel canvas draws itself (read by PixelCanvas). */
+  --canvas-grid: rgba(255, 255, 255, 0.07);
+  --canvas-grid-major: rgba(255, 255, 255, 0.18);
+  --canvas-dim: rgba(20, 21, 26, 0.45);
+  --canvas-tile-edge: rgba(255, 255, 255, 0.35);
   --radius: 8px;
   --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
   --mono: 'SF Mono', ui-monospace, Menlo, monospace;
   color-scheme: dark;
+}
+
+/* Light theme: chosen directly, or "System" while macOS is in light mode. */
+:root[data-theme='light'] {
+  --bg: #eef0f4;
+  --panel: #ffffff;
+  --panel-2: #f2f3f7;
+  --raised: #ffffff;
+  --border: #dde0e8;
+  --border-strong: #c5c9d4;
+  --text: #1b1d24;
+  --muted: #646a7a;
+  --accent: #4f6ef7;
+  --accent-soft: rgba(79, 110, 247, 0.12);
+  --danger: #e0344a;
+  --star: #e8a600;
+  --checker-a: #e4e6ec;
+  --checker-b: #f6f7f9;
+  --canvas-grid: rgba(0, 0, 0, 0.08);
+  --canvas-grid-major: rgba(0, 0, 0, 0.22);
+  --canvas-dim: rgba(238, 240, 244, 0.6);
+  --canvas-tile-edge: rgba(0, 0, 0, 0.35);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: light) {
+  :root[data-theme='system'] {
+  --bg: #eef0f4;
+  --panel: #ffffff;
+  --panel-2: #f2f3f7;
+  --raised: #ffffff;
+  --border: #dde0e8;
+  --border-strong: #c5c9d4;
+  --text: #1b1d24;
+  --muted: #646a7a;
+  --accent: #4f6ef7;
+  --accent-soft: rgba(79, 110, 247, 0.12);
+  --danger: #e0344a;
+  --star: #e8a600;
+  --checker-a: #e4e6ec;
+  --checker-b: #f6f7f9;
+  --canvas-grid: rgba(0, 0, 0, 0.08);
+  --canvas-grid-major: rgba(0, 0, 0, 0.22);
+  --canvas-dim: rgba(238, 240, 244, 0.6);
+  --canvas-tile-edge: rgba(0, 0, 0, 0.35);
+  color-scheme: light;
+  }
 }
 
 * {
@@ -1215,10 +1266,11 @@ textarea.input {
   gap: 8px;
   max-width: 280px;
   padding: 5px 9px;
-  border: 1px solid var(--border-strong);
+  /* Tooltips stay dark in both themes, so their text is always light. */
+  border: 1px solid #3d4252;
   border-radius: 6px;
   background: #0d0e12;
-  color: var(--text);
+  color: #e7e9ee;
   font-size: 12px;
   line-height: 1.35;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
@@ -1234,10 +1286,10 @@ textarea.input {
 }
 .tooltip kbd {
   padding: 1px 5px;
-  border: 1px solid var(--border-strong);
+  border: 1px solid #3d4252;
   border-radius: 4px;
-  background: var(--raised);
-  color: var(--muted);
+  background: #2a2e39;
+  color: #b5bac6;
   font: 11px var(--mono);
 }
 @keyframes tooltip-in {
@@ -1911,4 +1963,73 @@ textarea.input {
 }
 .list .group-row + tr td {
   border-top: none;
+}
+
+/* ---------- sidebar footer, shortcuts sheet ---------- */
+
+.footer-actions {
+  display: flex;
+  gap: 6px;
+}
+.footer-actions .btn {
+  flex: 1;
+  justify-content: center;
+}
+.shortcuts-dialog {
+  width: min(860px, calc(100vw - 48px));
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+}
+.shortcuts-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.shortcuts-grid {
+  columns: 2 300px;
+  column-gap: 32px;
+}
+.shortcuts-grid section {
+  break-inside: avoid;
+  margin-bottom: 18px;
+}
+.shortcuts-grid h3 {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.shortcuts-grid dl {
+  margin: 0;
+}
+.shortcut-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 3px 0;
+}
+.shortcut-row dt {
+  flex: 0 0 140px;
+}
+.shortcut-row dd {
+  margin: 0;
+}
+kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--panel-2);
+  font: 11px var(--mono);
+  white-space: nowrap;
+}
+
+.rail-spacer {
+  flex: 1;
+}
+.theme-btn span {
+  font-size: 10px;
 }

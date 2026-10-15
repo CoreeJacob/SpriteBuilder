@@ -72,6 +72,10 @@ export interface SaveSpriteRequest {
 
 export interface SpriteBuilderApi {
   getLibrary(): Promise<LibrarySnapshot>
+  /** Saves the whole library as a .zip chosen in a Save dialog. Null if cancelled. */
+  backupLibrary(): Promise<{ path: string; files: number; bytes: number } | null>
+  /** Unpacks a backup .zip into a new folder and opens it as the library. Null if cancelled. */
+  restoreLibrary(): Promise<{ snapshot: LibrarySnapshot; folder: string; files: number } | null>
   chooseLibraryRoot(): Promise<LibrarySnapshot | null>
   onLibraryChanged(callback: (snapshot: LibrarySnapshot) => void): () => void
 
@@ -123,4 +127,4 @@ export interface SpriteBuilderApi {
   onMenuCommand(callback: (command: MenuCommand) => void): () => void
 }
 
-export type MenuCommand = 'undo' | 'redo' | 'selectAll'
+export type MenuCommand = 'undo' | 'redo' | 'selectAll' | 'backup' | 'restore' | 'shortcuts'

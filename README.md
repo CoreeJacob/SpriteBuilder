@@ -30,12 +30,20 @@ npm run dist     # build a .dmg into dist/
 
 ## Status
 
-Phases 1–5 of the plan are done:
-- **Library:** folders, tags, filters and search.
-- **Pixel Studio:** drawing tools, layers, animation with named tags, canvas resize, saved and imported palettes, GIF import, GIF and sprite-sheet export, and autosave with crash recovery.
+All six phases of the plan are done:
+- **Library:**
+  - Folders with drag-and-drop, tags, filters and search, with sections per subfolder.
+  - Right-click menus.
+  - Backup and restore as a .zip (File menu, or ⋯ next to Change Folder).
+- **Pixel Studio:**
+  - Drawing tools, layers, animation with named tags, and canvas resize.
+  - Saved and imported palettes, and GIF import.
+  - GIF and sprite-sheet export.
+  - Autosave with crash recovery.
 - **Image Editor:** crop, resize, adjustments, colour tools and a sprite-sheet slicer.
-
-Next up is phase 6 (polish): a zip backup of the library, a shortcuts cheat sheet, and a light theme.
+- **Everywhere:**
+  - A keyboard shortcuts sheet (press `?`).
+  - A System / Dark / Light theme switch at the bottom of the left rail.
 
 To install the app into /Applications after changing the code, run `npm run install-app`.
 

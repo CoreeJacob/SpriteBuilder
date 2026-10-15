@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState, type DragEvent } from 'react'
 import { basenameRel, dirnameRel, isInside } from '@shared/paths'
 import { ContextMenu, type MenuEntry, type MenuRequest } from '@/app/ContextMenu'
+import { backupLibrary, changeLibraryFolder, restoreLibrary } from '@/app/libraryActions'
 import { Icon } from '@/app/Icon'
 import { attempt, useApp } from '@/app/store'
 import type { Scope } from './filter'
@@ -218,18 +219,30 @@ export function FolderSidebar() {
         <div className="muted small" title={library.root}>
           {library.root.replace(/^\/Users\/[^/]+/, '~')}
         </div>
-        <button
-          className="btn small"
-          onClick={() => void attempt(async () => {
-            const snapshot = await window.api.chooseLibraryRoot()
-            if (snapshot) {
-              useApp.getState().setLibrary(snapshot)
-              setScope({ kind: 'all' })
-            }
-          })}
-        >
-          Change Folder…
-        </button>
+        <div className="footer-actions">
+          <button className="btn small" onClick={() => void changeLibraryFolder()} title="Open a different folder as the library">
+            Change Folder…
+          </button>
+          <button
+            className="icon-btn"
+            title="Back up or restore the library"
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect()
+              setMenu({
+                x: r.left,
+                y: r.top - 4,
+                entries: [
+                  { label: 'Back Up Library…', icon: 'archive', onSelect: () => void backupLibrary() },
+                  { label: 'Restore from Backup…', icon: 'import', onSelect: () => void restoreLibrary() },
+                  'separator',
+                  { label: 'Show Library in Finder', icon: 'reveal', onSelect: () => void attempt(() => window.api.revealItem('')) }
+                ]
+              })
+            }}
+          >
+            <Icon name="more" />
+          </button>
+        </div>
       </div>
 
       {menu && <ContextMenu menu={menu} onClose={closeMenu} />}

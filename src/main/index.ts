@@ -13,6 +13,7 @@ import {
   type SavedPalette,
   type SaveSpriteRequest
 } from '@shared/types'
+import { createBackup, restoreBackup } from './backup'
 import { Library } from './library'
 import { Recovery } from './recovery'
 
@@ -118,7 +119,15 @@ function buildMenu(): void {
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
       { role: 'appMenu' },
-      { role: 'fileMenu' },
+      {
+        label: 'File',
+        submenu: [
+          { label: 'Back Up Library…', click: send('backup') },
+          { label: 'Restore Library from Backup…', click: send('restore') },
+          { type: 'separator' },
+          { role: 'close' }
+        ]
+      },
       {
         label: 'Edit',
         submenu: [
@@ -140,7 +149,11 @@ function buildMenu(): void {
           { role: 'togglefullscreen' }
         ]
       },
-      { role: 'windowMenu' }
+      { role: 'windowMenu' },
+      {
+        role: 'help',
+        submenu: [{ label: 'Keyboard Shortcuts', accelerator: 'CmdOrCtrl+/', click: send('shortcuts') }]
+      }
     ])
   )
 }
@@ -167,6 +180,44 @@ function registerIpc(): void {
   }
 
   handle('library:get', () => lib().getSnapshot())
+
+  handle('library:backup', async () => {
+    const stamp = new Date().toISOString().slice(0, 10)
+    const result = await dialog.showSaveDialog(mainWindow!, {
+      title: 'Back Up Library',
+      defaultPath: `SpriteBuilder Library ${stamp}.zip`,
+      filters: [{ name: 'Zip Archive', extensions: ['zip'] }]
+    })
+    if (result.canceled || !result.filePath) return null
+    const backup = await createBackup(lib().root)
+    await fs.writeFile(result.filePath, backup.zip)
+    return { path: result.filePath, files: backup.files, bytes: backup.bytes }
+  })
+
+  handle('library:restore', async () => {
+    const pick = await dialog.showOpenDialog(mainWindow!, {
+      title: 'Choose a Library Backup',
+      properties: ['openFile'],
+      filters: [{ name: 'Zip Archive', extensions: ['zip'] }]
+    })
+    if (pick.canceled || !pick.filePaths[0]) return null
+    const zipPath = pick.filePaths[0]
+    const where = await dialog.showOpenDialog(mainWindow!, {
+      title: 'Where Should the Restored Library Go?',
+      message: 'A new folder is made here for the restored library. Your current library is not changed.',
+      buttonLabel: 'Restore Here',
+      properties: ['openDirectory', 'createDirectory']
+    })
+    if (where.canceled || !where.filePaths[0]) return null
+    // Always restore into a brand-new folder named after the backup.
+    const base = path.basename(zipPath, path.extname(zipPath))
+    let folder = path.join(where.filePaths[0], base)
+    for (let n = 2; await fs.access(folder).then(() => true, () => false); n++) folder = path.join(where.filePaths[0], `${base} ${n}`)
+    const restored = await restoreBackup(new Uint8Array(await fs.readFile(zipPath)), folder)
+    const opened = await openLibrary(folder)
+    await saveSettings({ ...(await loadSettings()), libraryRoot: opened.root })
+    return { snapshot: opened.getSnapshot(), folder, files: restored.files }
+  })
 
   handle('library:chooseRoot', async () => {
     const result = await dialog.showOpenDialog(mainWindow!, {

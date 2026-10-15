@@ -9,6 +9,8 @@ const subscribe = <T>(channel: string, callback: (value: T) => void): (() => voi
 
 const api: SpriteBuilderApi = {
   getLibrary: () => ipcRenderer.invoke('library:get'),
+  backupLibrary: () => ipcRenderer.invoke('library:backup'),
+  restoreLibrary: () => ipcRenderer.invoke('library:restore'),
   chooseLibraryRoot: () => ipcRenderer.invoke('library:chooseRoot'),
   onLibraryChanged: (callback) => subscribe<LibrarySnapshot>('library:changed', callback),
 
