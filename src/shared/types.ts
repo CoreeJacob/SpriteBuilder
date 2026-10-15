@@ -38,10 +38,18 @@ export interface LibraryItem extends EditableMeta {
   hasProject: boolean
 }
 
+/** A file or folder the app moved or renamed (folders carry everything inside them). */
+export interface PathMove {
+  from: string
+  to: string
+}
+
 export interface LibrarySnapshot {
   root: string
   folders: string[]
   items: LibraryItem[]
+  /** Moves and renames that caused this update, so open documents can follow their files. */
+  moved?: PathMove[]
 }
 
 export interface ImportedFile {
@@ -69,6 +77,8 @@ export interface SpriteBuilderApi {
 
   createFolder(parent: string, name: string): Promise<string>
   renameFolder(path: string, newName: string): Promise<string>
+  /** Moves a folder (and everything in it) inside another folder; "" is the library root. */
+  moveFolder(path: string, destParent: string): Promise<string>
   deleteFolder(path: string): Promise<void>
 
   /** Copies files into the library. With no paths, shows an Open dialog first. */

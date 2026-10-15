@@ -105,19 +105,20 @@ export async function saveCopy(): Promise<void> {
   commitAdjustments()
   const { source, image } = useEditor.getState()
   if (!source || !image) return
-  const name = await useApp.getState().ask({
+  const answer = await useApp.getState().askNameAndFolder({
     title: 'Save as Copy',
-    label: `Saves a new PNG into “${source.folder || 'Library'}”. The original is left as it is.`,
+    label: 'Saves a new PNG. The original is left as it is.',
     value: `${source.name}-edited`,
+    folder: source.folder,
     confirmLabel: 'Save'
   })
-  if (!name) return
+  if (!answer) return
   const data = await encode(image, 'png')
-  const added = await attempt(() => window.api.importData(source.folder, [{ name: `${stripExt(name)}.png`, data }]))
+  const added = await attempt(() => window.api.importData(answer.folder, [{ name: `${stripExt(answer.name)}.png`, data }]))
   const path = added?.[0]
   if (!path) return
   const file = path.slice(path.lastIndexOf('/') + 1)
-  const copy: EditorSource = { path, name: stripExt(file), folder: source.folder, ext: 'png', hasProject: false }
+  const copy: EditorSource = { path, name: stripExt(file), folder: answer.folder, ext: 'png', hasProject: false }
   useEditor.getState().markSaved(copy)
   useApp.getState().notify(`Saved ${file}`)
 }

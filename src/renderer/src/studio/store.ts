@@ -82,6 +82,8 @@ interface StudioState extends DocLocation {
 
   newDoc(width: number, height: number, palette?: Palette): void
   loadDoc(doc: SpriteDoc, location: DocLocation): void
+  /** Closes the sprite (used when its file is deleted); the Studio shows "New Sprite" again. */
+  closeDoc(): void
   activeLayer(): Layer | null
   activeCel(): Uint8ClampedArray | null
   /** Call before changing pixels; returns a function to call when the change is done. */
@@ -277,6 +279,22 @@ export const useStudio = create<StudioState>((set, get) => {
         floating: null,
         playing: false,
         zoom: fitZoom(doc.width, doc.height),
+        dirty: false,
+        canUndo: false,
+        canRedo: false,
+        version: get().version + 1
+      })
+    },
+
+    closeDoc: () => {
+      history.clear()
+      set({
+        doc: null,
+        savedPath: null,
+        selection: null,
+        floating: null,
+        rangeStart: null,
+        playing: false,
         dirty: false,
         canUndo: false,
         canRedo: false,

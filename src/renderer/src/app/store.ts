@@ -2,6 +2,7 @@
 // the small dialogs and toasts every screen can use.
 
 import { create } from 'zustand'
+import { followMoves } from '@shared/paths'
 import type { LibrarySnapshot } from '@shared/types'
 import { DEFAULT_FILTERS, type LibraryFilters, type Scope, type SortOrder } from '@/library/filter'
 
@@ -19,7 +20,14 @@ export interface PromptRequest {
   label?: string
   value: string
   confirmLabel?: string
-  resolve: (value: string | null) => void
+  /** When set, the dialog also offers a folder picker starting at this folder ("" = library root). */
+  folder?: string
+  resolve: (value: string | null, folder: string) => void
+}
+
+export interface NameAndFolder {
+  name: string
+  folder: string
 }
 
 interface AppState {
@@ -52,9 +60,18 @@ interface AppState {
 
   notify(message: string, kind?: Toast['kind']): void
   dismissToast(id: number): void
-  ask(request: Omit<PromptRequest, 'resolve'>): Promise<string | null>
-  closePrompt(value: string | null): void
+  ask(request: Omit<PromptRequest, 'resolve' | 'folder'>): Promise<string | null>
+  /** Asks for a name and a library folder to save into. */
+  askNameAndFolder(request: Omit<PromptRequest, 'resolve'> & { folder: string }): Promise<NameAndFolder | null>
+  closePrompt(value: string | null, folder?: string): void
 }
+
+/**
+ * Use this instead of `?? []` inside a store selector: a new empty array on every call
+ * looks like a change, which makes React re-render forever.
+ */
+export const NO_FOLDERS: string[] = []
+export const selectFolders = (s: { library: LibrarySnapshot | null }): string[] => s.library?.folders ?? NO_FOLDERS
 
 const PREFS_KEY = 'spritebuilder.prefs'
 
@@ -108,12 +125,16 @@ export const useApp = create<AppState>((set, get) => ({
 
   setView: (view) => set({ view }),
   setLibrary: (library) => {
-    // Drop selected items that no longer exist (deleted, moved or renamed).
+    // Follow anything the app just moved or renamed, then drop what no longer exists.
+    const moves = library.moved ?? []
     const present = new Set(library.items.map((i) => i.path))
-    const selection = get().selection.filter((p) => present.has(p))
-    const scope = get().scope
-    const scopeGone = scope.kind === 'folder' && scope.path !== '' && !library.folders.includes(scope.path)
-    set({ library, selection, ...(scopeGone ? { scope: { kind: 'all' as const } } : {}) })
+    const selection = get()
+      .selection.map((p) => followMoves(p, moves))
+      .filter((p) => present.has(p))
+    let scope = get().scope
+    if (scope.kind === 'folder' && moves.length) scope = { kind: 'folder', path: followMoves(scope.path, moves) }
+    if (scope.kind === 'folder' && scope.path !== '' && !library.folders.includes(scope.path)) scope = { kind: 'all' }
+    set({ library, selection, scope })
   },
   setScope: (scope) => set({ scope, selection: [], selectionAnchor: null }),
   setIncludeSubfolders: (includeSubfolders) => {
@@ -145,12 +166,18 @@ export const useApp = create<AppState>((set, get) => ({
   dismissToast: (id) => set({ toasts: get().toasts.filter((t) => t.id !== id) }),
   ask: (request) =>
     new Promise((resolve) => {
-      get().prompt?.resolve(null)
-      set({ prompt: { ...request, resolve } })
+      get().prompt?.resolve(null, '')
+      set({ prompt: { ...request, resolve: (value) => resolve(value) } })
     }),
-  closePrompt: (value) => {
-    get().prompt?.resolve(value)
+  askNameAndFolder: (request) =>
+    new Promise((resolve) => {
+      get().prompt?.resolve(null, '')
+      set({ prompt: { ...request, resolve: (name, folder) => resolve(name === null ? null : { name, folder }) } })
+    }),
+  closePrompt: (value, folder) => {
+    const prompt = get().prompt
     set({ prompt: null })
+    prompt?.resolve(value, folder ?? prompt.folder ?? '')
   }
 }))
 

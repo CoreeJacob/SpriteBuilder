@@ -181,6 +181,7 @@ function registerIpc(): void {
 
   handle('folder:create', (parent: string, name: string) => lib().createFolder(parent, name))
   handle('folder:rename', (folder: string, name: string) => lib().renameFolder(folder, name))
+  handle('folder:move', (folder: string, dest: string) => lib().moveFolder(folder, dest))
   handle('folder:delete', (folder: string) => lib().deleteFolder(folder))
 
   handle('items:importFiles', async (dest: string, paths?: string[]) => {

@@ -136,27 +136,28 @@ export async function saveSprite(saveAs = false): Promise<void> {
   if (!studio.doc) return
 
   let name = studio.name
+  let folder = studio.folder
   let overwrite = true
   if (saveAs || !studio.savedPath) {
-    const answer = await app.ask({
-      title: 'Save Sprite',
-      label: `Saves a PNG and an editable .sprite.json into "${studio.folder || 'Library'}".`,
+    const answer = await app.askNameAndFolder({
+      title: saveAs ? 'Save Sprite As' : 'Save Sprite',
+      label: 'Saves a PNG plus an editable .sprite.json.',
       value: studio.name,
+      folder: studio.folder,
       confirmLabel: 'Save'
     })
     if (!answer) return
-    name = answer
+    name = answer.name
+    folder = answer.folder
     overwrite = false
   }
 
   const doc = studio.doc
   const png = await pngBytes(doc)
-  const path = await attempt(() =>
-    window.api.saveSprite({ folder: studio.folder, name, png, project: serializeDoc(doc), overwrite })
-  )
+  const path = await attempt(() => window.api.saveSprite({ folder, name, png, project: serializeDoc(doc), overwrite }))
   if (!path) return
   const fileName = path.slice(path.lastIndexOf('/') + 1)
-  useStudio.getState().markSaved({ savedPath: path, name: stripExt(fileName), folder: studio.folder })
+  useStudio.getState().markSaved({ savedPath: path, name: stripExt(fileName), folder })
   app.notify(`Saved ${fileName}`)
 }
 

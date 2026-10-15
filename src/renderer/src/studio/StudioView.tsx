@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Icon, type IconName } from '@/app/Icon'
-import { useApp } from '@/app/store'
+import { selectFolders, useApp } from '@/app/store'
 import { readPastedImage, writeSystemClipboard } from './clipboard'
 import { confirmDiscard, exportGif, exportPng, frameCanvas, saveSprite } from './io'
 import { CanvasSizeDialog } from './CanvasSizeDialog'
@@ -192,7 +192,7 @@ function StudioBar({ onNew, onSheet, onSize }: { onNew: () => void; onSheet: () 
   const mirrorY = useStudio((s) => s.mirrorY)
   const canUndo = useStudio((s) => s.canUndo)
   const canRedo = useStudio((s) => s.canRedo)
-  const folders = useApp((s) => s.library?.folders ?? [])
+  const folders = useApp(selectFolders)
   const s = useStudio.getState()
 
   return (

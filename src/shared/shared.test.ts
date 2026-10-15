@@ -36,3 +36,18 @@ describe('countFrames', () => {
     expect(countFrames(new Uint8Array([1, 2, 3]), 'jpg')).toBe(1)
   })
 })
+
+import { followMoves } from './paths'
+
+describe('followMoves', () => {
+  it('follows file moves and folder moves, in order', () => {
+    const moves = [
+      { from: 'hero.png', to: 'Heroes/hero.png' },
+      { from: 'Heroes', to: 'Characters/Heroes' }
+    ]
+    expect(followMoves('hero.png', moves)).toBe('Characters/Heroes/hero.png')
+    expect(followMoves('Heroes/x/y.png', moves)).toBe('Characters/Heroes/x/y.png')
+    expect(followMoves('HeroesExtra/z.png', moves)).toBe('HeroesExtra/z.png')
+    expect(followMoves('other.png', moves)).toBe('other.png')
+  })
+})

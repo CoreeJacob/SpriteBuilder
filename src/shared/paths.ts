@@ -47,6 +47,16 @@ export function withSheetImage(json: string, imageFile: string): string {
   }
 }
 
+/** Where a path ends up after a series of moves (a moved folder takes its contents along). */
+export function followMoves(path: string, moves: Array<{ from: string; to: string }>): string {
+  let current = path
+  for (const { from, to } of moves) {
+    if (current === from) current = to
+    else if (from && current.startsWith(from + '/')) current = to + current.slice(from.length)
+  }
+  return current
+}
+
 /** Rejects names that would escape a folder or create hidden files. */
 export function isValidName(name: string): boolean {
   const trimmed = name.trim()

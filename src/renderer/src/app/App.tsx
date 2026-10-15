@@ -8,6 +8,7 @@ import { useStudioAutosave } from '@/studio/autosave'
 import { useSavedPalettes } from '@/studio/savedPalettes'
 import { useStudio } from '@/studio/store'
 import { Icon, type IconName } from './Icon'
+import { syncOpenDocuments } from './openDocuments'
 import { PromptDialog, Toasts } from './Overlays'
 import { RecoveryDialog } from './RecoveryDialog'
 import { Tooltips } from './Tooltips'
@@ -35,7 +36,10 @@ export function App() {
 
   useEffect(() => {
     void window.api.getLibrary().then(setLibrary)
-    return window.api.onLibraryChanged(setLibrary)
+    return window.api.onLibraryChanged((snapshot) => {
+      setLibrary(snapshot)
+      syncOpenDocuments(snapshot)
+    })
   }, [setLibrary])
 
   // The app menu owns ⌘Z and ⌘A, so route them to text fields or the current screen.

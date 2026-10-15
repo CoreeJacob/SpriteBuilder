@@ -14,6 +14,7 @@ const api: SpriteBuilderApi = {
 
   createFolder: (parent, name) => ipcRenderer.invoke('folder:create', parent, name),
   renameFolder: (path, name) => ipcRenderer.invoke('folder:rename', path, name),
+  moveFolder: (path, dest) => ipcRenderer.invoke('folder:move', path, dest),
   deleteFolder: (path) => ipcRenderer.invoke('folder:delete', path),
 
   importFiles: (dest, paths) => ipcRenderer.invoke('items:importFiles', dest, paths),

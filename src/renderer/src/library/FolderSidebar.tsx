@@ -13,30 +13,71 @@ interface MenuState {
 }
 
 /** Handlers that let a sidebar entry accept library items dragged onto it. */
+export const FOLDER_DRAG_TYPE = 'application/x-spritebuilder-folder'
+
+/** The folder being dragged. Drag data can't be read during dragover, so it's kept here too. */
+let draggedFolder: string | null = null
+
+/**
+ * Lets a sidebar entry accept drops: library images (moved here), other folders (moved
+ * inside this one) and files from Finder (imported here).
+ */
 function useDropTarget(folder: string | null) {
   const [over, setOver] = useState(false)
   if (folder === null) return { over: false, handlers: {} }
-  const accepts = (e: DragEvent): boolean => e.dataTransfer.types.includes(ITEM_DRAG_TYPE)
+
+  const kind = (e: DragEvent): 'items' | 'folder' | 'files' | null => {
+    const types = e.dataTransfer.types
+    if (types.includes(ITEM_DRAG_TYPE)) return 'items'
+    if (types.includes(FOLDER_DRAG_TYPE)) {
+      // A folder can't go inside itself or stay where it is.
+      const source = draggedFolder
+      return source && !isInside(folder, source) && dirnameRel(source) !== folder ? 'folder' : null
+    }
+    if (types.includes('Files')) return 'files'
+    return null
+  }
+
   return {
     over,
     handlers: {
       onDragOver: (e: DragEvent) => {
-        if (!accepts(e)) return
+        const k = kind(e)
+        if (!k) return
         e.preventDefault()
-        e.dataTransfer.dropEffect = 'move'
+        e.dataTransfer.dropEffect = k === 'files' ? 'copy' : 'move'
         setOver(true)
       },
       onDragLeave: () => setOver(false),
       onDrop: (e: DragEvent) => {
         setOver(false)
-        if (!accepts(e)) return
+        const k = kind(e)
+        if (!k) return
         e.preventDefault()
-        const paths: string[] = JSON.parse(e.dataTransfer.getData(ITEM_DRAG_TYPE))
-        void attempt(async () => {
-          const moved = await window.api.moveItems(paths, folder)
-          useApp.getState().select(moved)
-          useApp.getState().notify(`Moved ${moved.length} item${moved.length === 1 ? '' : 's'} to ${folder || 'Library'}`)
-        })
+        const app = useApp.getState()
+        const where = folder || 'Library'
+        if (k === 'items') {
+          const paths: string[] = JSON.parse(e.dataTransfer.getData(ITEM_DRAG_TYPE))
+          void attempt(async () => {
+            const moved = await window.api.moveItems(paths, folder)
+            app.select(moved)
+            app.notify(`Moved ${moved.length} item${moved.length === 1 ? '' : 's'} to ${where}`)
+          })
+        } else if (k === 'folder') {
+          const source = e.dataTransfer.getData(FOLDER_DRAG_TYPE)
+          void attempt(async () => {
+            await window.api.moveFolder(source, folder)
+            app.notify(`Moved “${basenameRel(source)}” into ${where}`)
+          })
+        } else {
+          const paths = [...e.dataTransfer.files].map((f) => window.api.getPathForFile(f)).filter(Boolean)
+          if (!paths.length) return
+          void attempt(async () => {
+            const added = await window.api.importFiles(folder, paths)
+            if (added.length) app.notify(`Imported ${added.length} image${added.length === 1 ? '' : 's'} into ${where}`)
+            else app.notify('Nothing imported. Supported types are PNG, JPG, GIF, WebP, SVG and BMP.', 'error')
+          })
+        }
       }
     }
   }
@@ -163,6 +204,7 @@ export function FolderSidebar() {
               onMenu={(e) => setMenu({ folder, x: e.clientX, y: e.clientY })}
               expander={hasChildren ? { open: !collapsed.has(folder), toggle: () => toggle(folder) } : undefined}
               dropFolder={folder}
+              dragFolder={folder}
             />
           )
         })}
@@ -211,15 +253,25 @@ interface EntryProps {
   onMenu?: (e: React.MouseEvent) => void
   expander?: { open: boolean; toggle: () => void }
   dropFolder: string | null
+  /** Set on folders that can be dragged to move them. */
+  dragFolder?: string
 }
 
-function SidebarEntry({ icon, label, count, active, depth = 0, onClick, onMenu, expander, dropFolder }: EntryProps) {
+function SidebarEntry({ icon, label, count, active, depth = 0, onClick, onMenu, expander, dropFolder, dragFolder }: EntryProps) {
   const drop = useDropTarget(dropFolder)
   return (
     <div
       className={`sidebar-entry ${active ? 'active' : ''} ${drop.over ? 'drop-over' : ''}`}
       style={{ paddingLeft: 8 + depth * 14 }}
       onClick={onClick}
+      draggable={dragFolder !== undefined}
+      onDragStart={(e) => {
+        if (dragFolder === undefined) return
+        draggedFolder = dragFolder
+        e.dataTransfer.setData(FOLDER_DRAG_TYPE, dragFolder)
+        e.dataTransfer.effectAllowed = 'move'
+      }}
+      onDragEnd={() => (draggedFolder = null)}
       onContextMenu={(e) => {
         if (!onMenu) return
         e.preventDefault()

@@ -26,6 +26,7 @@ import {
   type ImportedFile,
   type LibraryItem,
   type LibrarySnapshot,
+  type PathMove,
   type SavedPalette,
   type SaveSpriteRequest
 } from '@shared/types'
@@ -77,6 +78,8 @@ export class Library {
   private rescanTimer: NodeJS.Timeout | null = null
   private queue: Promise<unknown> = Promise.resolve()
   private lastEmitted = ''
+  /** Moves made since the last update, sent along with it. */
+  private pendingMoves: PathMove[] = []
 
   private constructor(
     readonly root: string,
@@ -136,6 +139,21 @@ export class Library {
       }
       await fs.rename(this.abs(folder), this.abs(target))
       this.remapMeta((p) => (isInside(p, folder) ? target + p.slice(folder.length) : p))
+      this.pendingMoves.push({ from: folder, to: target })
+      return target
+    })
+  }
+
+  moveFolder(folder: string, destParent: string): Promise<string> {
+    return this.mutate(async () => {
+      if (!folder) throw new Error('The library root cannot be moved')
+      if (isInside(destParent, folder)) throw new Error('A folder can’t be moved inside itself')
+      const target = joinRel(destParent, basenameRel(folder))
+      if (target === folder) return folder
+      if (await exists(this.abs(target))) throw new Error(`“${basenameRel(folder)}” already exists in ${destParent || 'Library'}`)
+      await fs.rename(this.abs(folder), this.abs(target))
+      this.remapMeta((p) => (isInside(p, folder) ? target + p.slice(folder.length) : p))
+      this.pendingMoves.push({ from: folder, to: target })
       return target
     })
   }
@@ -396,6 +414,7 @@ export class Library {
       await fs.rename(this.abs(project), this.abs(projectPathFor(to)))
     }
     this.remapMeta((p) => (p === from ? to : p))
+    this.pendingMoves.push({ from, to })
   }
 
   private remapMeta(map: (p: string) => string): void {
@@ -535,9 +554,11 @@ export class Library {
 
   private emit(): void {
     const json = JSON.stringify(this.snapshot)
-    if (json === this.lastEmitted) return
+    const moved = this.pendingMoves
+    if (json === this.lastEmitted && !moved.length) return
     this.lastEmitted = json
-    this.onChange(this.snapshot)
+    this.pendingMoves = []
+    this.onChange(moved.length ? { ...this.snapshot, moved } : this.snapshot)
   }
 
   private startWatching(): void {

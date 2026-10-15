@@ -275,3 +275,48 @@ describe('saved palettes', () => {
     await expect(lib.savePalette({ name: 'X', colors: ['red'] })).rejects.toThrow()
   })
 })
+
+describe('moves are announced so open documents can follow them', () => {
+  it('reports item moves and renames with the update they cause', async () => {
+    await write('hero.png')
+    await write('Heroes/.keep', '')
+    await open()
+    const updates: LibrarySnapshot[] = []
+    lib.close()
+    lib = await Library.open(root, (s) => updates.push(s))
+    await lib.moveItems(['hero.png'], 'Heroes')
+    await lib.renameItem('Heroes/hero.png', 'knight')
+    const moves = updates.flatMap((u) => u.moved ?? [])
+    expect(moves).toEqual([
+      { from: 'hero.png', to: 'Heroes/hero.png' },
+      { from: 'Heroes/hero.png', to: 'Heroes/knight.png' }
+    ])
+    // Later updates don't repeat old moves.
+    await lib.updateMeta(['Heroes/knight.png'], { favorite: true })
+    expect(updates.at(-1)?.moved).toBeUndefined()
+  })
+})
+
+describe('moving folders', () => {
+  it('moves a folder with everything inside, keeping metadata', async () => {
+    await write('Enemies/Bats/bat.png')
+    await write('Characters/.keep', '')
+    await open()
+    await lib.updateMeta(['Enemies/Bats/bat.png'], { tags: ['flying'] })
+    expect(await lib.moveFolder('Enemies', 'Characters')).toBe('Characters/Enemies')
+    expect(item('Characters/Enemies/Bats/bat.png')?.tags).toEqual(['flying'])
+    expect(snapshot.folders).toEqual(['Characters', 'Characters/Enemies', 'Characters/Enemies/Bats'])
+    expect(await lib.moveFolder('Characters/Enemies', '')).toBe('Enemies') // back to the top level
+  })
+
+  it('refuses impossible moves', async () => {
+    await write('A/B/x.png')
+    await write('C/A/.keep', '')
+    await open()
+    await expect(lib.moveFolder('A', 'A/B')).rejects.toThrow(/inside itself/)
+    await expect(lib.moveFolder('A', 'A')).rejects.toThrow(/inside itself/)
+    await expect(lib.moveFolder('A', 'C')).rejects.toThrow(/already exists/)
+    await expect(lib.moveFolder('', 'C')).rejects.toThrow()
+    expect(await lib.moveFolder('A/B', 'A')).toBe('A/B') // already there
+  })
+})

@@ -6,7 +6,8 @@ import { attempt, useApp } from '@/app/store'
 import { itemUrl } from '@/lib/fileUrl'
 import { formatBytes, formatDateTime, formatDimensions } from '@/lib/format'
 import { openInEditor } from '@/editor/io'
-import { openInStudio } from '@/studio/io'
+import { frameCanvas, openInStudio } from '@/studio/io'
+import { parseDoc } from '@/studio/model'
 
 const ZOOMS = ['fit', 1, 2, 4, 8] as const
 type Zoom = (typeof ZOOMS)[number]
@@ -83,15 +84,22 @@ function SinglePanel({ item, allTags, folders }: { item: LibraryItem; allTags: s
   return (
     <aside className="detail">
       <div className="preview checker">
-        <img
-          ref={imgRef}
-          src={itemUrl(item)}
-          alt=""
-          crossOrigin="anonymous"
-          className={zoom === 'fit' && (item.width ?? 999) > 256 ? '' : 'pixelated'}
-          style={{ ...previewStyle, visibility: paused ? 'hidden' : 'visible', position: paused ? 'absolute' : undefined }}
-        />
-        {paused && <canvas ref={canvasRef} className="pixelated" style={previewStyle} />}
+        {animated && item.hasProject ? (
+          // A Pixel Studio sprite's PNG holds only its first frame; play the frames from its project.
+          <SpriteAnimation item={item} paused={paused} style={previewStyle} />
+        ) : (
+          <>
+            <img
+              ref={imgRef}
+              src={itemUrl(item)}
+              alt=""
+              crossOrigin="anonymous"
+              className={zoom === 'fit' && (item.width ?? 999) > 256 ? '' : 'pixelated'}
+              style={{ ...previewStyle, visibility: paused ? 'hidden' : 'visible', position: paused ? 'absolute' : undefined }}
+            />
+            {paused && <canvas ref={canvasRef} className="pixelated" style={previewStyle} />}
+          </>
+        )}
       </div>
       <div className="preview-controls">
         {ZOOMS.map((z) => (
@@ -217,6 +225,63 @@ function SinglePanel({ item, allTags, folders }: { item: LibraryItem; allTags: s
       </div>
     </aside>
   )
+}
+
+interface PreviewFrame {
+  canvas: HTMLCanvasElement
+  duration: number
+}
+
+/** Plays a Pixel Studio sprite's animation from its .sprite.json, using each frame's timing. */
+function SpriteAnimation({ item, paused, style }: { item: LibraryItem; paused: boolean; style: React.CSSProperties }) {
+  const ref = useRef<HTMLCanvasElement>(null)
+  const index = useRef(0)
+  const [frames, setFrames] = useState<PreviewFrame[] | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    index.current = 0
+    void window.api.readProject(item.path).then((text) => {
+      if (cancelled || !text) return
+      try {
+        const doc = parseDoc(text)
+        setFrames(doc.frames.map((f, i) => ({ canvas: frameCanvas(doc, i), duration: f.duration })))
+      } catch {
+        setFrames(null)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [item.path, item.modifiedAt])
+
+  useEffect(() => {
+    const canvas = ref.current
+    if (!canvas || !frames?.length) return
+    canvas.width = frames[0].canvas.width
+    canvas.height = frames[0].canvas.height
+    const ctx = canvas.getContext('2d')!
+    const draw = (): void => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      ctx.drawImage(frames[index.current % frames.length].canvas, 0, 0)
+    }
+    draw()
+    if (paused) return
+    let timer: ReturnType<typeof setTimeout>
+    const step = (): void => {
+      timer = setTimeout(() => {
+        index.current = (index.current + 1) % frames.length
+        draw()
+        step()
+      }, frames[index.current % frames.length].duration)
+    }
+    step()
+    return () => clearTimeout(timer)
+  }, [frames, paused])
+
+  // Until the project loads (or if it can't be read), show the PNG.
+  if (!frames) return <img src={itemUrl(item)} alt="" className="pixelated" style={style} />
+  return <canvas ref={ref} className="pixelated sprite-animation" style={style} />
 }
 
 function BulkPanel({ items, allTags, folders }: { items: LibraryItem[]; allTags: string[]; folders: string[] }) {
