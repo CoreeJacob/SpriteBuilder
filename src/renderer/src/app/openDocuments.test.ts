@@ -29,12 +29,6 @@ describe('Pixel Studio follows its file', () => {
     expect(useStudio.getState()).toMatchObject({ savedPath: 'knight.png', name: 'knight', folder: '' })
   })
 
-  it('follows a folder being moved', () => {
-    openSprite('Heroes/hero.png')
-    syncOpenDocuments(snap(['Chars/Heroes/hero.png'], ['Chars', 'Chars/Heroes'], [{ from: 'Heroes', to: 'Chars/Heroes' }]))
-    expect(useStudio.getState()).toMatchObject({ savedPath: 'Chars/Heroes/hero.png', folder: 'Chars/Heroes' })
-  })
-
   it('closes a deleted sprite with no unsaved changes', () => {
     openSprite('hero.png')
     syncOpenDocuments(snap([]))

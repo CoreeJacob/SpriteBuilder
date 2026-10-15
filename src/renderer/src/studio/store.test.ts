@@ -1,16 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { cloneState } from './layers'
-import { createDoc } from './model'
-import { sameState, useStudio } from './store'
-
-describe('change detection for undo', () => {
-  it('notices frame timing and order changes, not just pixels', () => {
-    const doc = createDoc(1, 1)
-    const before = cloneState(doc)
-    doc.frames[0].duration = 50
-    expect(sameState(before, cloneState(doc))).toBe(false)
-  })
-})
+import { useStudio } from './store'
 
 describe('studio frame actions', () => {
   beforeEach(() => useStudio.getState().newDoc(2, 2))

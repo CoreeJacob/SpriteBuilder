@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { countFrames } from './imageInfo'
-import { isInside, isValidName, projectPathFor, uniqueName } from './paths'
+import { followMoves, isInside, isValidName, projectPathFor, uniqueName } from './paths'
 
 describe('paths', () => {
   it('builds unique names', () => {
@@ -36,8 +36,6 @@ describe('countFrames', () => {
     expect(countFrames(new Uint8Array([1, 2, 3]), 'jpg')).toBe(1)
   })
 })
-
-import { followMoves } from './paths'
 
 describe('followMoves', () => {
   it('follows file moves and folder moves, in order', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { LibraryItem } from '@shared/types'
-import { DEFAULT_FILTERS, visibleItems } from './filter'
+import { DEFAULT_FILTERS, groupByFolder, visibleItems } from './filter'
 
 const DAY = 86_400_000
 const NOW = 100 * DAY
@@ -67,8 +67,6 @@ describe('visibleItems', () => {
     expect(names(sorted)).toEqual(['water.gif', 'grass.png', 'photo.jpeg', 'hero.png'])
   })
 })
-
-import { groupByFolder } from './filter'
 
 describe('groupByFolder', () => {
   it('puts the open folder first, then subfolders in tree order, keeping the sort inside groups', () => {

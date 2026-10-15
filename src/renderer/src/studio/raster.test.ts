@@ -1,5 +1,20 @@
 import { describe, expect, it } from 'vitest'
-import { floodFill, getPixel, linePoints, parseHex, setPixel, toHex, uniqueColors } from './raster'
+import {
+  blitRegion,
+  constrainEnd,
+  ellipsePoints,
+  extractRegion,
+  floodFill,
+  floodFillInRegion,
+  getPixel,
+  linePoints,
+  mirrorPoints,
+  parseHex,
+  rectPoints,
+  setPixel,
+  toHex,
+  uniqueColors
+} from './raster'
 
 const RED = parseHex('#ff0000')
 const BLUE = parseHex('#0000ff')
@@ -52,16 +67,6 @@ describe('uniqueColors', () => {
     expect(uniqueColors(buf)).toEqual(['#0000ff', '#ff0000'])
   })
 })
-
-import {
-  blitRegion,
-  constrainEnd,
-  ellipsePoints,
-  extractRegion,
-  floodFillInRegion,
-  mirrorPoints,
-  rectPoints
-} from './raster'
 
 const key = (pts: Array<[number, number]>): string[] => pts.map(([x, y]) => `${x},${y}`).sort()
 

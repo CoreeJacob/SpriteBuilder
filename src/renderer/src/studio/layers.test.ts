@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addLayer, cloneState, deleteLayer, duplicateLayer, mergeDown, moveLayer, restoreState } from './layers'
+import { addLayer, cloneState, deleteLayer, duplicateLayer, mergeDown, moveLayer, moveLayerTo, restoreState } from './layers'
 import { compositeFrame, createDoc } from './model'
 
 describe('layers', () => {
@@ -47,5 +47,20 @@ describe('layers', () => {
     expect(Array.from(doc.frames[0].cels[doc.layers[0].id])).toEqual([0, 0, 0, 0])
     doc.frames[0].cels[doc.layers[0].id][0] = 9
     expect(saved.frames[0].cels[doc.layers[0].id][0]).toBe(0)
+  })
+})
+
+describe('moveLayerTo', () => {
+  it('drops a layer above or below another', () => {
+    const doc = createDoc(1, 1)
+    const a = doc.layers[0].id
+    const b = addLayer(doc, a)
+    const c = addLayer(doc, b)
+    moveLayerTo(doc, c, a, 'below')
+    expect(doc.layers.map((l) => l.id)).toEqual([c, a, b])
+    moveLayerTo(doc, c, b, 'above')
+    expect(doc.layers.map((l) => l.id)).toEqual([a, b, c])
+    moveLayerTo(doc, a, a, 'above')
+    expect(doc.layers.map((l) => l.id)).toEqual([a, b, c])
   })
 })

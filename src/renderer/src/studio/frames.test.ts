@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addFrame, deleteFrame, duplicateFrame, moveFrame, setFps, sharedFps } from './frames'
-import { moveLayerTo, addLayer } from './layers'
+import { addFrame, addTag, deleteFrame, deleteTag, duplicateFrame, moveFrame, setFps, sharedFps } from './frames'
 import { createDoc } from './model'
 
 describe('frames', () => {
@@ -40,23 +39,6 @@ describe('frames', () => {
     expect(sharedFps(doc)).toBeNull()
   })
 })
-
-describe('moveLayerTo', () => {
-  it('drops a layer above or below another', () => {
-    const doc = createDoc(1, 1)
-    const a = doc.layers[0].id
-    const b = addLayer(doc, a)
-    const c = addLayer(doc, b)
-    moveLayerTo(doc, c, a, 'below')
-    expect(doc.layers.map((l) => l.id)).toEqual([c, a, b])
-    moveLayerTo(doc, c, b, 'above')
-    expect(doc.layers.map((l) => l.id)).toEqual([a, b, c])
-    moveLayerTo(doc, a, a, 'above')
-    expect(doc.layers.map((l) => l.id)).toEqual([a, b, c])
-  })
-})
-
-import { addTag, deleteTag } from './frames'
 
 describe('tags follow frame edits', () => {
   const setup = () => {

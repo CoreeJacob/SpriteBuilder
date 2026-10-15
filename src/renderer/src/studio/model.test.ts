@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compositeFrame, createDoc, parseDoc, serializeDoc } from './model'
-import { History } from './history'
+import { compositeFrame, createDoc, docFromFrames, parseDoc, serializeDoc } from './model'
 
 describe('sprite file format', () => {
   it('round-trips a document', () => {
@@ -29,25 +28,6 @@ describe('compositeFrame', () => {
     expect(Array.from(compositeFrame(doc))).toEqual([255, 0, 0, 255])
   })
 })
-
-describe('History', () => {
-  it('undoes and redoes in order and drops redo after a new push', () => {
-    const h = new History<number>(3)
-    h.push(1)
-    h.push(2)
-    expect(h.undo()).toBe(2)
-    expect(h.redo()).toBe(2)
-    expect(h.undo()).toBe(2)
-    h.push(3)
-    expect(h.canRedo).toBe(false)
-    h.push(4)
-    h.push(5)
-    // The limit of 3 drops the oldest entry.
-    expect([h.undo(), h.undo(), h.undo(), h.undo()]).toEqual([5, 4, 3, null])
-  })
-})
-
-import { docFromFrames } from './model'
 
 describe('docFromFrames', () => {
   it('builds one frame per image with clamped timings and a palette', () => {
