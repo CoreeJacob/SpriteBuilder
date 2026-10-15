@@ -49,6 +49,11 @@ export interface ImportedFile {
   data: Uint8Array
 }
 
+export interface SavedPalette {
+  name: string
+  colors: string[] // '#rrggbb'
+}
+
 export interface SaveSpriteRequest {
   folder: string
   name: string // without extension
@@ -87,6 +92,19 @@ export interface SpriteBuilderApi {
   /** Saves a sprite-sheet PNG, plus its frame data as a .json file next to it when `json` is given. */
   exportSheet(defaultName: string, png: Uint8Array, json: string | null): Promise<string | null>
   saveSheetToLibrary(folder: string, name: string, png: Uint8Array, json: string | null): Promise<string>
+
+  /** Palettes the user saved, stored with the library. */
+  listPalettes(): Promise<SavedPalette[]>
+  /** Adds a palette, or replaces the one with the same name. */
+  savePalette(palette: SavedPalette): Promise<SavedPalette[]>
+  deletePalette(name: string): Promise<SavedPalette[]>
+  /** Downloads a palette from lospec.com by its name in the URL (e.g. "sweetie-16"). */
+  fetchLospecPalette(slug: string): Promise<SavedPalette>
+
+  /** Crash recovery for Pixel Studio: keeps one autosaved copy of unsaved work. */
+  writeRecovery(content: string): Promise<void>
+  readRecovery(): Promise<{ savedAt: number; content: string } | null>
+  clearRecovery(): Promise<void>
 
   /** Absolute path of a file dropped from Finder. */
   getPathForFile(file: File): string

@@ -5,7 +5,7 @@ import type { LibraryItem } from '@shared/types'
 import { attempt, useApp } from '@/app/store'
 import { itemUrl, loadImage } from '@/lib/fileUrl'
 import { encodeGif } from './exporters'
-import { compositeFrame, docFromPixels, MAX_SIZE, parseDoc, serializeDoc, type SpriteDoc } from './model'
+import { compositeFrame, docFromFrames, docFromPixels, MAX_SIZE, parseDoc, serializeDoc, type SpriteDoc } from './model'
 import { useStudio } from './store'
 
 /** Draws one frame onto a new canvas, scaled up with hard pixel edges. */
@@ -53,6 +53,26 @@ export async function openInStudio(item: LibraryItem): Promise<void> {
     }
   }
 
+  // Animated GIF/WebP/PNG: bring in every frame with its timing.
+  if ((item.frames ?? 1) > 1 && ANIMATED_TYPES[item.ext]) {
+    try {
+      const frames = await decodeFrames(itemUrl(item), ANIMATED_TYPES[item.ext])
+      const { width, height } = frames[0]
+      if (width > MAX_SIZE || height > MAX_SIZE) {
+        throw new Error(`Pixel Studio works on images up to ${MAX_SIZE}×${MAX_SIZE}. This one is ${width}×${height}.`)
+      }
+      const doc = docFromFrames(width, height, frames)
+      // Saving would replace the animated file with a still PNG, so this saves as a new sprite.
+      useStudio.getState().loadDoc(doc, { ...location, savedPath: null })
+      useStudio.setState({ dirty: true })
+      app.setView('studio')
+      app.notify(`Opened ${frames.length} frames. Save makes a new sprite; the original ${item.ext.toUpperCase()} is left alone.`)
+      return
+    } catch (err) {
+      app.notify(`${(err as Error).message} Opening the first frame instead.`, 'error')
+    }
+  }
+
   try {
     const img = await loadImage(itemUrl(item))
     const { naturalWidth: w, naturalHeight: h } = img
@@ -71,6 +91,41 @@ export async function openInStudio(item: LibraryItem): Promise<void> {
     app.setView('studio')
   } catch (err) {
     app.notify((err as Error).message, 'error')
+  }
+}
+
+const ANIMATED_TYPES: Record<string, string> = { gif: 'image/gif', webp: 'image/webp', png: 'image/apng' }
+
+interface DecodedFrame {
+  width: number
+  height: number
+  pixels: Uint8ClampedArray
+  duration: number // ms
+}
+
+/** Decodes every frame of an animated image, fully drawn (not just the changed parts). */
+export async function decodeFrames(url: string, type: string): Promise<DecodedFrame[]> {
+  const data = await (await fetch(url)).arrayBuffer()
+  if (!(await ImageDecoder.isTypeSupported(type))) throw new Error(`Can't read the frames of this ${type} file.`)
+  const decoder = new ImageDecoder({ data, type })
+  try {
+    await decoder.tracks.ready
+    const count = decoder.tracks.selectedTrack?.frameCount ?? 1
+    const frames: DecodedFrame[] = []
+    for (let i = 0; i < count; i++) {
+      const { image } = await decoder.decode({ frameIndex: i })
+      const width = image.displayWidth
+      const height = image.displayHeight
+      const canvas = new OffscreenCanvas(width, height)
+      const ctx = canvas.getContext('2d')!
+      ctx.drawImage(image, 0, 0)
+      // Durations come in microseconds; a missing or zero delay plays at 10 FPS like browsers do.
+      frames.push({ width, height, pixels: ctx.getImageData(0, 0, width, height).data, duration: image.duration ? image.duration / 1000 : 100 })
+      image.close()
+    }
+    return frames
+  } finally {
+    decoder.close()
   }
 }
 
@@ -116,11 +171,15 @@ export async function exportPng(scale: number): Promise<void> {
   if (saved) useApp.getState().notify(`Exported ${saved.slice(saved.lastIndexOf('/') + 1)}`)
 }
 
-export async function exportGif(scale: number): Promise<void> {
+/** Exports every frame as a GIF, or only the selected run of frames (e.g. one named animation). */
+export async function exportGif(scale: number, selectedOnly = false): Promise<void> {
   useStudio.getState().commitFloating()
-  const { doc, name } = useStudio.getState()
+  const { doc, name, frameRange } = useStudio.getState()
   if (!doc) return
-  const gif = encodeGif(doc, scale)
-  const saved = await attempt(() => window.api.exportGif(`${name}${scale === 1 ? '' : `@${scale}x`}.gif`, gif))
+  const range = selectedOnly ? frameRange() : undefined
+  const tag = range && doc.tags.find((t) => t.from === range[0] && t.to === range[1])
+  const gif = encodeGif(doc, scale, range)
+  const label = tag ? `-${tag.name}` : range ? `-${range[0] + 1}-${range[1] + 1}` : ''
+  const saved = await attempt(() => window.api.exportGif(`${name}${label}${scale === 1 ? '' : `@${scale}x`}.gif`, gif))
   if (saved) useApp.getState().notify(`Exported ${saved.slice(saved.lastIndexOf('/') + 1)}`)
 }

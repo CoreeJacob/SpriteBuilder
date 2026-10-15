@@ -50,5 +50,6 @@ describe('encodeGif', () => {
     expect(new TextDecoder().decode(gif.slice(0, 6))).toBe('GIF89a')
     expect(gif[6] | (gif[7] << 8)).toBe(8) // width after 2× scale
     expect(countFrames(gif, 'gif')).toBe(3)
+    expect(countFrames(encodeGif(doc, 1, [1, 2]), 'gif')).toBe(2)
   })
 })

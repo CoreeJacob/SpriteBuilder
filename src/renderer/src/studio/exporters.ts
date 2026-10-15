@@ -21,13 +21,15 @@ export function scalePixels(px: Uint8ClampedArray, w: number, h: number, scale: 
 // ---------- GIF ----------
 
 /**
- * Encodes every frame as one looping GIF. Up to 255 colours are kept exact (most
+ * Encodes the frames (all, or a range) as one looping GIF. Up to 255 colours are kept exact (most
  * pixel art); beyond that the colours are reduced. Index 0 is transparent.
  */
-export function encodeGif(doc: SpriteDoc, scale = 1): Uint8Array {
+export function encodeGif(doc: SpriteDoc, scale = 1, range?: [number, number]): Uint8Array {
   const w = doc.width * scale
   const h = doc.height * scale
-  const frames = doc.frames.map((_, i) => scalePixels(compositeFrame(doc, i), doc.width, doc.height, scale))
+  const [first, last] = range ?? [0, doc.frames.length - 1]
+  const indexes = Array.from({ length: last - first + 1 }, (_, i) => first + i)
+  const frames = indexes.map((i) => scalePixels(compositeFrame(doc, i), doc.width, doc.height, scale))
 
   // GIF transparency is all or nothing, so semi-transparent pixels are rounded.
   const colors = new Map<number, number>()
@@ -69,7 +71,7 @@ export function encodeGif(doc: SpriteDoc, scale = 1): Uint8Array {
   frames.forEach((px, i) => {
     gif.writeFrame(toIndex(px), w, h, {
       palette: i === 0 ? palette : undefined,
-      delay: doc.frames[i].duration,
+      delay: doc.frames[indexes[i]].duration,
       transparent: true,
       transparentIndex: 0,
       repeat: 0
@@ -157,7 +159,10 @@ export function sheetJson(doc: SpriteDoc, plan: SheetPlan, name: string, imageFi
         format: 'RGBA8888',
         size: { w: plan.width, h: plan.height },
         scale: String(scale),
-        frameTags: [{ name, from: 0, to: plan.rects.length - 1, direction: 'forward' }]
+        // Named animations; a sprite with none is one animation named after the sprite.
+        frameTags: doc.tags.length
+          ? doc.tags.map((t) => ({ name: t.name, from: t.from, to: t.to, direction: 'forward', color: t.color }))
+          : [{ name, from: 0, to: plan.rects.length - 1, direction: 'forward' }]
       }
     },
     null,

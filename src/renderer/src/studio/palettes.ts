@@ -37,3 +37,56 @@ export const PALETTES: Palette[] = [
 ]
 
 export const DEFAULT_PALETTE = PALETTES[0]
+
+// ---------- importing ----------
+
+const hex6 = (r: number, g: number, b: number): string =>
+  `#${[r, g, b].map((v) => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('')}`
+
+/**
+ * Reads a palette file: .hex (Lospec), .gpl (GIMP/Aseprite), .pal (JASC) or .txt
+ * (Paint.NET). Anything else is searched for hex colours.
+ */
+export function parsePaletteFile(fileName: string, text: string): Palette {
+  const stem = fileName.replace(/\.[^.]+$/, '')
+  const lines = text.split(/\r?\n/).map((l) => l.trim())
+  const colors: string[] = []
+  let name = stem
+
+  if (lines[0]?.startsWith('GIMP Palette')) {
+    for (const line of lines.slice(1)) {
+      const named = line.match(/^Name:\s*(.+)$/i)
+      if (named) name = named[1].trim()
+      const rgb = line.match(/^(\d{1,3})\s+(\d{1,3})\s+(\d{1,3})/)
+      if (rgb) colors.push(hex6(+rgb[1], +rgb[2], +rgb[3]))
+    }
+  } else if (lines[0] === 'JASC-PAL') {
+    for (const line of lines.slice(3)) {
+      const rgb = line.match(/^(\d{1,3})\s+(\d{1,3})\s+(\d{1,3})$/)
+      if (rgb) colors.push(hex6(+rgb[1], +rgb[2], +rgb[3]))
+    }
+  } else {
+    for (const line of lines) {
+      if (line.startsWith(';')) continue // Paint.NET comments
+      const argb = line.match(/^[0-9a-f]{2}([0-9a-f]{6})$/i) // Paint.NET writes AARRGGBB
+      if (argb) {
+        colors.push(`#${argb[1].toLowerCase()}`)
+        continue
+      }
+      for (const m of line.matchAll(/#?\b([0-9a-f]{6})\b/gi)) colors.push(`#${m[1].toLowerCase()}`)
+    }
+  }
+  const unique = [...new Set(colors)].slice(0, 256)
+  if (!unique.length) throw new Error(`No colours found in ${fileName}`)
+  return { name, colors: unique }
+}
+
+/** "https://lospec.com/palette-list/sweetie-16", "Sweetie 16" or "sweetie-16" → "sweetie-16". */
+export function lospecSlug(input: string): string {
+  const fromUrl = input.match(/palette-list\/([^/?#.]+)/i)
+  return (fromUrl ? fromUrl[1] : input)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}

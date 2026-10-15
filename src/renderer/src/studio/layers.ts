@@ -1,16 +1,22 @@
 // Layer operations. Each returns the id of the layer that should be active afterwards.
 
-import { newId, type Layer, type SpriteDoc } from './model'
+import { newId, type FrameTag, type Layer, type SpriteDoc } from './model'
 import { blendOver } from './raster'
 
 /** A deep copy of everything undo needs to restore after a layer change. */
 export interface DocState {
+  width: number
+  height: number
   layers: Layer[]
   frames: SpriteDoc['frames']
+  tags: FrameTag[]
 }
 
 export function cloneState(doc: SpriteDoc): DocState {
   return {
+    width: doc.width,
+    height: doc.height,
+    tags: doc.tags.map((t) => ({ ...t })),
     layers: doc.layers.map((l) => ({ ...l })),
     frames: doc.frames.map((f) => ({
       ...f,
@@ -21,6 +27,9 @@ export function cloneState(doc: SpriteDoc): DocState {
 
 export function restoreState(doc: SpriteDoc, state: DocState): void {
   const copy = cloneState({ ...doc, ...state })
+  doc.width = copy.width
+  doc.height = copy.height
+  doc.tags = copy.tags
   doc.layers = copy.layers
   doc.frames = copy.frames
 }

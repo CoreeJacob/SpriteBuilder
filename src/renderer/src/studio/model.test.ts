@@ -46,3 +46,21 @@ describe('History', () => {
     expect([h.undo(), h.undo(), h.undo(), h.undo()]).toEqual([5, 4, 3, null])
   })
 })
+
+import { docFromFrames } from './model'
+
+describe('docFromFrames', () => {
+  it('builds one frame per image with clamped timings and a palette', () => {
+    const red = new Uint8ClampedArray([255, 0, 0, 255])
+    const blue = new Uint8ClampedArray([0, 0, 255, 255])
+    const doc = docFromFrames(1, 1, [
+      { pixels: red, duration: 0 },
+      { pixels: blue, duration: 250 }
+    ])
+    expect(doc.frames.map((f) => f.duration)).toEqual([100, 250])
+    expect(Array.from(doc.frames[1].cels[doc.layers[0].id])).toEqual([0, 0, 255, 255])
+    expect(doc.palette.colors.sort()).toEqual(['#0000ff', '#ff0000'])
+    red[0] = 1
+    expect(doc.frames[0].cels[doc.layers[0].id][0]).toBe(255) // copied, not shared
+  })
+})

@@ -4,9 +4,12 @@ import { LibraryView } from '@/library/LibraryView'
 import { EditorView } from '@/editor/EditorView'
 import { StudioView } from '@/studio/StudioView'
 import { useEditor } from '@/editor/store'
+import { useStudioAutosave } from '@/studio/autosave'
+import { useSavedPalettes } from '@/studio/savedPalettes'
 import { useStudio } from '@/studio/store'
 import { Icon, type IconName } from './Icon'
 import { PromptDialog, Toasts } from './Overlays'
+import { RecoveryDialog } from './RecoveryDialog'
 import { Tooltips } from './Tooltips'
 import { useApp, type View } from './store'
 
@@ -54,6 +57,13 @@ export function App() {
   }, [dirty])
 
   useEnrichment(library?.items)
+  useStudioAutosave()
+
+  // Saved palettes live in the library folder, so reload them when it changes.
+  const root = library?.root
+  useEffect(() => {
+    if (root) void useSavedPalettes.getState().load()
+  }, [root])
 
   return (
     <div className="app">
@@ -84,6 +94,7 @@ export function App() {
       <PromptDialog />
       <Toasts />
       <Tooltips />
+      <RecoveryDialog />
     </div>
   )
 }

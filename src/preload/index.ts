@@ -35,6 +35,15 @@ const api: SpriteBuilderApi = {
   exportSheet: (name, png, json) => ipcRenderer.invoke('sprite:exportSheet', name, png, json),
   saveSheetToLibrary: (folder, name, png, json) => ipcRenderer.invoke('sprite:saveSheetToLibrary', folder, name, png, json),
 
+  listPalettes: () => ipcRenderer.invoke('palettes:list'),
+  savePalette: (palette) => ipcRenderer.invoke('palettes:save', palette),
+  deletePalette: (name) => ipcRenderer.invoke('palettes:delete', name),
+  fetchLospecPalette: (slug) => ipcRenderer.invoke('palettes:lospec', slug),
+
+  writeRecovery: (content) => ipcRenderer.invoke('recovery:write', content),
+  readRecovery: () => ipcRenderer.invoke('recovery:read'),
+  clearRecovery: () => ipcRenderer.invoke('recovery:clear'),
+
   getPathForFile: (file) => webUtils.getPathForFile(file),
   onMenuCommand: (callback) => subscribe<MenuCommand>('menu:command', callback)
 }

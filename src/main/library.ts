@@ -26,11 +26,13 @@ import {
   type ImportedFile,
   type LibraryItem,
   type LibrarySnapshot,
+  type SavedPalette,
   type SaveSpriteRequest
 } from '@shared/types'
 
 const INDEX_DIR = '.spritebuilder'
 const INDEX_FILE = 'library.json'
+const PALETTES_FILE = 'palettes.json'
 const MAX_FRAME_SCAN_BYTES = 50 * 1024 * 1024
 
 interface StoredMeta extends EditableMeta {
@@ -54,6 +56,13 @@ const isImage = (name: string): boolean =>
 /** Only PNGs can have a Pixel Studio project next to them. */
 const projectOf = (imagePath: string): string | null =>
   extOf(imagePath) === 'png' ? projectPathFor(imagePath) : null
+
+const isPalette = (p: unknown): p is SavedPalette =>
+  typeof p === 'object' &&
+  p !== null &&
+  typeof (p as SavedPalette).name === 'string' &&
+  Array.isArray((p as SavedPalette).colors) &&
+  (p as SavedPalette).colors.every((c) => typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c))
 
 const exists = async (p: string): Promise<boolean> =>
   fs.access(p).then(
@@ -295,6 +304,44 @@ export class Library {
       if (json !== null) await fs.writeFile(this.abs(joinRel(folder, `${base}.json`)), withSheetImage(json, `${base}.png`), 'utf8')
       return rel
     })
+  }
+
+  // ---------- palettes ----------
+
+  async listPalettes(): Promise<SavedPalette[]> {
+    try {
+      const raw = JSON.parse(await fs.readFile(path.join(this.root, INDEX_DIR, PALETTES_FILE), 'utf8'))
+      return Array.isArray(raw?.palettes) ? raw.palettes.filter(isPalette) : []
+    } catch {
+      return []
+    }
+  }
+
+  savePalette(palette: SavedPalette): Promise<SavedPalette[]> {
+    return this.serial(async () => {
+      const name = palette.name.trim()
+      if (!name) throw new Error('A palette needs a name')
+      if (!isPalette(palette) || palette.colors.length === 0) throw new Error('A palette needs at least one colour')
+      const list = (await this.listPalettes()).filter((p) => p.name.toLowerCase() !== name.toLowerCase())
+      list.push({ name, colors: palette.colors.map((c) => c.toLowerCase()).slice(0, 256) })
+      await this.writePalettes(list)
+      return list
+    })
+  }
+
+  deletePalette(name: string): Promise<SavedPalette[]> {
+    return this.serial(async () => {
+      const list = (await this.listPalettes()).filter((p) => p.name !== name)
+      await this.writePalettes(list)
+      return list
+    })
+  }
+
+  private async writePalettes(palettes: SavedPalette[]): Promise<void> {
+    const file = path.join(this.root, INDEX_DIR, PALETTES_FILE)
+    await fs.mkdir(path.dirname(file), { recursive: true })
+    await fs.writeFile(`${file}.tmp`, JSON.stringify({ version: 1, palettes }, null, 2), 'utf8')
+    await fs.rename(`${file}.tmp`, file)
   }
 
   // ---------- internals ----------

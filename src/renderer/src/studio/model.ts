@@ -19,12 +19,22 @@ export interface Frame {
   cels: Record<string, Uint8ClampedArray>
 }
 
+/** A named run of frames, such as "walk" or "idle" (inclusive indexes). */
+export interface FrameTag {
+  id: string
+  name: string
+  from: number
+  to: number
+  color: string
+}
+
 export interface SpriteDoc {
   width: number
   height: number
   palette: Palette
   layers: Layer[] // bottom first
   frames: Frame[]
+  tags: FrameTag[]
 }
 
 export const FILE_FORMAT = 'spritebuilder-sprite'
@@ -39,7 +49,8 @@ export function createDoc(width: number, height: number, palette: Palette = DEFA
     height,
     palette: { name: palette.name, colors: [...palette.colors] },
     layers: [layer],
-    frames: [{ id: newId(), duration: 100, cels: { [layer.id]: new Uint8ClampedArray(width * height * 4) } }]
+    frames: [{ id: newId(), duration: 100, cels: { [layer.id]: new Uint8ClampedArray(width * height * 4) } }],
+    tags: []
   }
 }
 
@@ -48,6 +59,22 @@ export function docFromPixels(width: number, height: number, pixels: Uint8Clampe
   const doc = createDoc(width, height)
   doc.frames[0].cels[doc.layers[0].id].set(pixels)
   const colors = uniqueColors(pixels, 64)
+  if (colors.length) doc.palette = { name: 'Image colours', colors }
+  return doc
+}
+
+/** A one-layer animation from a list of frames, with a palette of the colours they use. */
+export function docFromFrames(width: number, height: number, frames: Array<{ pixels: Uint8ClampedArray; duration: number }>): SpriteDoc {
+  const doc = createDoc(width, height)
+  const layer = doc.layers[0].id
+  doc.frames = frames.map((f) => ({
+    id: newId(),
+    duration: Math.round(Math.max(10, Math.min(10000, f.duration || 100))),
+    cels: { [layer]: f.pixels.slice() }
+  }))
+  const all = new Uint8ClampedArray(frames.reduce((n, f) => n + f.pixels.length, 0))
+  frames.reduce((offset, f) => (all.set(f.pixels, offset), offset + f.pixels.length), 0)
+  const colors = uniqueColors(all, 64)
   if (colors.length) doc.palette = { name: 'Image colours', colors }
   return doc
 }
@@ -86,6 +113,7 @@ export function serializeDoc(doc: SpriteDoc): string {
     height: doc.height,
     palette: doc.palette,
     layers: doc.layers,
+    tags: doc.tags,
     frames: doc.frames.map((f) => ({
       id: f.id,
       duration: f.duration,
@@ -107,6 +135,8 @@ export function parseDoc(text: string): SpriteDoc {
     height,
     palette: raw.palette ?? DEFAULT_PALETTE,
     layers: raw.layers,
+    // Tags arrived after the first files were saved, so they may be missing.
+    tags: Array.isArray(raw.tags) ? raw.tags.filter((t: FrameTag) => t && typeof t.name === 'string') : [],
     frames: raw.frames.map((f: { id: string; duration: number; cels: Record<string, string> }) => ({
       id: f.id,
       duration: f.duration,

@@ -3,7 +3,8 @@
 
 import { create } from 'zustand'
 import { History } from './history'
-import { addFrame, deleteFrame, duplicateFrame, moveFrame, setDuration, setFps } from './frames'
+import { resizeCanvas, scaleSprite, type Anchor } from './canvasSize'
+import { addFrame, addTag, deleteFrame, deleteTag, duplicateFrame, moveFrame, renameTag, setDuration, setFps } from './frames'
 import {
   addLayer,
   cloneState,
@@ -58,6 +59,8 @@ interface StudioState extends DocLocation {
   doc: SpriteDoc | null
   version: number
   frame: number
+  /** With shift-click, frames from here to `frame` are selected (for tagging and previewing). */
+  rangeStart: number | null
   layerId: string
   tool: Tool
   primary: string
@@ -124,7 +127,16 @@ interface StudioState extends DocLocation {
   beginLayerChange(): () => void
   setLayerOpacity(id: string, opacity: number): void
 
-  setFrame(index: number): void
+  /** Changes the sprite's size: 'canvas' adds or cuts space around the pixels, 'scale' stretches them. */
+  resize(width: number, height: number, mode: 'canvas' | 'scale', anchor: Anchor): void
+
+  setFrame(index: number, extendRange?: boolean): void
+  /** The selected run of frames as [first, last]; a single frame when nothing is shift-selected. */
+  frameRange(): [number, number]
+  addTag(name: string): void
+  renameTag(id: string, name: string): void
+  deleteTag(id: string): void
+  selectTag(id: string): void
   stepFrame(direction: 1 | -1): void
   addFrame(): void
   duplicateFrame(): void
@@ -156,6 +168,9 @@ const sameBytes = (a: Uint8ClampedArray, b: Uint8ClampedArray): boolean =>
 
 /** True when two snapshots match: layers, frame order and timing, and every pixel. */
 export const sameState = (a: DocState, b: DocState): boolean =>
+  a.width === b.width &&
+  a.height === b.height &&
+  JSON.stringify(a.tags) === JSON.stringify(b.tags) &&
   JSON.stringify(a.layers) === JSON.stringify(b.layers) &&
   a.frames.length === b.frames.length &&
   a.frames.every((f, i) => {
@@ -221,6 +236,7 @@ export const useStudio = create<StudioState>((set, get) => {
     doc: null,
     version: 0,
     frame: 0,
+    rangeStart: null,
     layerId: '',
     tool: 'pencil',
     primary: '#000000',
@@ -255,6 +271,7 @@ export const useStudio = create<StudioState>((set, get) => {
         doc,
         ...location,
         frame: 0,
+        rangeStart: null,
         layerId: doc.layers[doc.layers.length - 1].id,
         selection: null,
         floating: null,
@@ -488,13 +505,41 @@ export const useStudio = create<StudioState>((set, get) => {
       set({ dirty: true, version: get().version + 1 })
     },
 
+    resize: (width, height, mode, anchor) => {
+      const doc = get().doc
+      if (!doc || (width === doc.width && height === doc.height)) return
+      useStudio.setState({ selection: null })
+      changeDoc((d) => (mode === 'scale' ? scaleSprite(d, width, height) : resizeCanvas(d, width, height, anchor)))
+      set({ zoom: fitZoom(width, height) })
+    },
+
     // ---------- frames ----------
 
-    setFrame: (index) => {
+    setFrame: (index, extendRange = false) => {
       const doc = get().doc
       if (!doc) return
       get().commitFloating()
-      set({ frame: Math.max(0, Math.min(doc.frames.length - 1, index)), version: get().version + 1 })
+      const frame = Math.max(0, Math.min(doc.frames.length - 1, index))
+      const rangeStart = extendRange ? (get().rangeStart ?? get().frame) : null
+      set({ frame, rangeStart: rangeStart === frame ? null : rangeStart, version: get().version + 1 })
+    },
+    frameRange: () => {
+      const { frame, rangeStart, doc } = get()
+      const last = (doc?.frames.length ?? 1) - 1
+      const start = Math.min(rangeStart ?? frame, last)
+      return start <= frame ? [start, frame] : [frame, start]
+    },
+    addTag: (name) => {
+      const [from, to] = get().frameRange()
+      changeDoc((doc) => void addTag(doc, from, to, name))
+    },
+    renameTag: (id, name) => changeDoc((doc) => renameTag(doc, id, name)),
+    deleteTag: (id) => changeDoc((doc) => deleteTag(doc, id)),
+    selectTag: (id) => {
+      const tag = get().doc?.tags.find((t) => t.id === id)
+      if (!tag) return
+      get().commitFloating()
+      set({ frame: tag.to, rangeStart: tag.from === tag.to ? null : tag.from, version: get().version + 1 })
     },
     stepFrame: (direction) => {
       const doc = get().doc
@@ -502,10 +547,10 @@ export const useStudio = create<StudioState>((set, get) => {
       // Wraps around, like the animation does.
       get().setFrame((get().frame + direction + doc.frames.length) % doc.frames.length)
     },
-    addFrame: () => changeDoc((doc, at) => ({ frame: addFrame(doc, at.frame) })),
-    duplicateFrame: () => changeDoc((doc, at) => ({ frame: duplicateFrame(doc, at.frame) })),
-    deleteFrame: () => changeDoc((doc, at) => ({ frame: deleteFrame(doc, at.frame) })),
-    moveFrame: (from, to) => changeDoc((doc) => ({ frame: moveFrame(doc, from, to) })),
+    addFrame: () => (set({ rangeStart: null }), changeDoc((doc, at) => ({ frame: addFrame(doc, at.frame) }))),
+    duplicateFrame: () => (set({ rangeStart: null }), changeDoc((doc, at) => ({ frame: duplicateFrame(doc, at.frame) }))),
+    deleteFrame: () => (set({ rangeStart: null }), changeDoc((doc, at) => ({ frame: deleteFrame(doc, at.frame) }))),
+    moveFrame: (from, to) => (set({ rangeStart: null }), changeDoc((doc) => ({ frame: moveFrame(doc, from, to) }))),
     setFrameDuration: (index, ms) => changeDoc((doc) => setDuration(doc, index, ms)),
     setFps: (fps) => changeDoc((doc) => setFps(doc, fps)),
     toggleOnionSkin: () => set({ onionSkin: !get().onionSkin, version: get().version + 1 }),

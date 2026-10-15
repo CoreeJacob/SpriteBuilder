@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from '@/app/Icon'
+import { useApp } from '@/app/store'
 import { sharedFps } from './frames'
 import { compositeFrame, type SpriteDoc } from './model'
 import { useStudio } from './store'
 
 const FRAME_DRAG_TYPE = 'application/x-spritebuilder-frame'
+/** Width of one frame cell plus the gap after it, so tag bars line up with frames. */
+const FRAME_STEP = 62
 
 /** The gap a dragged frame would drop into: before this frame (left half) or after it. */
 const dropSlot = (e: React.DragEvent<HTMLElement>, index: number): number => {
@@ -18,11 +21,26 @@ export function Timeline() {
   const frame = useStudio((s) => s.frame)
   const playing = useStudio((s) => s.playing)
   const onionSkin = useStudio((s) => s.onionSkin)
+  const rangeStart = useStudio((s) => s.rangeStart)
   useStudio((s) => s.version) // frames change in place; re-render on every edit
   const [drop, setDrop] = useState<number | null>(null)
+  const [renaming, setRenaming] = useState<string | null>(null)
   const s = useStudio.getState()
+  const app = useApp.getState()
 
   const count = doc.frames.length
+  const [rangeFrom, rangeTo] = s.frameRange()
+  const ranged = rangeStart !== null
+
+  const nameFrames = async (): Promise<void> => {
+    const name = await app.ask({
+      title: 'Name These Frames',
+      label: `Frames ${rangeFrom + 1}–${rangeTo + 1} become one animation, e.g. “walk” or “idle”. Game engines read the name from the sprite sheet’s .json.`,
+      value: '',
+      confirmLabel: 'Add Tag'
+    })
+    if (name?.trim()) s.addTag(name)
+  }
   const fps = sharedFps(doc)
   const current = doc.frames[frame]
 
@@ -60,6 +78,14 @@ export function Timeline() {
           <Icon name="onion" size={14} /> Onion skin
         </button>
 
+        <button
+          className="btn small"
+          onClick={() => void nameFrames()}
+          title="Name the selected frames as an animation (shift-click frames to select several)"
+        >
+          <Icon name="tag" size={14} /> {ranged ? `Name frames ${rangeFrom + 1}–${rangeTo + 1}…` : 'Name frames…'}
+        </button>
+
         <div className="spacer" />
 
         <button className="icon-btn" onClick={s.addFrame} title="New empty frame after this one">
@@ -78,12 +104,63 @@ export function Timeline() {
         </button>
       </div>
 
+      <div className="frames-scroll">
+      {doc.tags.length > 0 && (
+        <div className="tags-row" style={{ width: count * FRAME_STEP }}>
+          {doc.tags.map((t) => (
+            <div
+              key={t.id}
+              className={`tag-bar ${ranged && rangeFrom === t.from && rangeTo === t.to ? 'selected' : ''}`}
+              style={{ left: t.from * FRAME_STEP, width: (t.to - t.from + 1) * FRAME_STEP - 6, background: t.color }}
+              onClick={() => s.selectTag(t.id)}
+              onDoubleClick={() => setRenaming(t.id)}
+              title={`${t.name} · frames ${t.from + 1}–${t.to + 1} · click to select, double-click to rename`}
+            >
+              {renaming === t.id ? (
+                <input
+                  className="tag-rename"
+                  defaultValue={t.name}
+                  autoFocus
+                  onFocus={(e) => e.currentTarget.select()}
+                  onClick={(e) => e.stopPropagation()}
+                  onBlur={(e) => {
+                    setRenaming(null)
+                    if (e.currentTarget.value.trim() && e.currentTarget.value !== t.name) s.renameTag(t.id, e.currentTarget.value)
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') e.currentTarget.blur()
+                    if (e.key === 'Escape') setRenaming(null)
+                  }}
+                />
+              ) : (
+                <span className="tag-name">{t.name}</span>
+              )}
+              <button
+                className="tag-remove"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  s.deleteTag(t.id)
+                }}
+                title={`Remove the “${t.name}” tag (the frames stay)`}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="frames" onDragLeave={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && setDrop(null)}>
         {doc.frames.map((f, i) => (
           <div
             key={f.id}
-            className={`frame-cell ${i === frame ? 'active' : ''} ${drop === i ? 'drop-before' : ''} ${drop === count && i === count - 1 ? 'drop-after' : ''}`}
-            onClick={() => s.setFrame(i)}
+            className={[
+              'frame-cell',
+              i === frame ? 'active' : '',
+              ranged && i >= rangeFrom && i <= rangeTo ? 'in-range' : '',
+              drop === i ? 'drop-before' : '',
+              drop === count && i === count - 1 ? 'drop-after' : ''
+            ].join(' ')}
+            onClick={(e) => s.setFrame(i, e.shiftKey)}
             draggable
             onDragStart={(e) => {
               e.dataTransfer.setData(FRAME_DRAG_TYPE, String(i))
@@ -107,7 +184,7 @@ export function Timeline() {
               setDrop(null)
             }}
             onDragEnd={() => setDrop(null)}
-            title={`Frame ${i + 1} · ${f.duration} ms · drag to reorder`}
+            title={`Frame ${i + 1} · ${f.duration} ms · drag to reorder, shift-click to select several`}
           >
             <FrameThumb doc={doc} index={i} />
             <span className="frame-number">{i + 1}</span>
@@ -116,6 +193,7 @@ export function Timeline() {
         <button className="frame-add" onClick={() => (s.setFrame(count - 1), s.addFrame())} title="Add a frame at the end">
           <Icon name="plus" />
         </button>
+      </div>
       </div>
     </div>
   )

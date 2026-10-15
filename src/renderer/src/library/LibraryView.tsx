@@ -5,7 +5,7 @@ import { Icon } from '@/app/Icon'
 import { attempt, useApp } from '@/app/store'
 import { formatBytes } from '@/lib/format'
 import { confirmDelete, DetailPanel } from './DetailPanel'
-import { allTags as collectTags, countActiveFilters, inScope, visibleItems } from './filter'
+import { allTags as collectTags, countActiveFilters, groupByFolder, inScope, visibleItems } from './filter'
 import { FolderSidebar } from './FolderSidebar'
 import { ItemGrid, ItemList } from './ItemViews'
 import { Toolbar } from './Toolbar'
@@ -47,10 +47,18 @@ export function LibraryView() {
   const selection = useApp((s) => s.selection)
   const [dropping, setDropping] = useState(false)
 
-  const items = useMemo(
+  const sorted = useMemo(
     () => (library ? visibleItems(library.items, scope, includeSubfolders, filters, sort) : []),
     [library, scope, includeSubfolders, filters, sort]
   )
+  // In a folder with subfolders included, show a section per folder. `items` follows the
+  // on-screen order so shift-click ranges and ⌘A match what you see.
+  const openFolder = scope.kind === 'folder' ? scope.path : ''
+  const groups = useMemo(
+    () => (scope.kind === 'folder' && includeSubfolders ? groupByFolder(sorted, openFolder) : undefined),
+    [sorted, scope.kind, includeSubfolders, openFolder]
+  )
+  const items = useMemo(() => (groups ? groups.flatMap((g) => g.items) : sorted), [groups, sorted])
   const tags = useMemo(() => collectTags(library?.items ?? []), [library])
   const destFolder = scope.kind === 'folder' ? scope.path : ''
 
@@ -186,9 +194,9 @@ export function LibraryView() {
               )}
             </div>
           ) : layout === 'grid' ? (
-            <ItemGrid items={items} />
+            <ItemGrid items={items} groups={groups} openFolder={openFolder} />
           ) : (
-            <ItemList items={items} />
+            <ItemList items={items} groups={groups} openFolder={openFolder} />
           )}
           {dropping && <div className="drop-overlay">Drop to import into “{destFolder || 'Library'}”</div>}
         </div>

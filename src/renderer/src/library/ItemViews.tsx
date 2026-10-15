@@ -5,11 +5,53 @@ import { useApp } from '@/app/store'
 import { itemUrl } from '@/lib/fileUrl'
 import { formatBytes, formatDate, formatDimensions } from '@/lib/format'
 import { openInStudio } from '@/studio/io'
-import type { SortKey } from './filter'
+import type { FolderGroup, SortKey } from './filter'
 import { ITEM_DRAG_TYPE } from './FolderSidebar'
 
 interface ViewProps {
   items: LibraryItem[]
+  /** When set, items are shown in sections per folder (the open folder plus its subfolders). */
+  groups?: FolderGroup[]
+  openFolder?: string
+}
+
+/** Sections only help when images come from more than one folder. */
+const sectioned = (groups: FolderGroup[] | undefined): groups is FolderGroup[] => !!groups && groups.length > 1
+
+/** "Tiles/Water/Deep" seen from "Tiles" → "Water / Deep". */
+function relativeLabel(folder: string, openFolder: string): string {
+  const rel = openFolder && folder.startsWith(openFolder + '/') ? folder.slice(openFolder.length + 1) : folder
+  return rel.split('/').join(' / ')
+}
+
+function GroupHeader({ group, openFolder }: { group: FolderGroup; openFolder: string }) {
+  const setScope = useApp((s) => s.setScope)
+  const own = group.folder === openFolder
+  const count = `${group.items.length} image${group.items.length === 1 ? '' : 's'}`
+  if (own) {
+    return (
+      <div className="group-header own">
+        <Icon name="folder" size={14} />
+        <span className="group-name">In this folder</span>
+        <span className="group-count">{count}</span>
+      </div>
+    )
+  }
+  return (
+    <button
+      className="group-header"
+      onClick={(e) => {
+        e.stopPropagation()
+        setScope({ kind: 'folder', path: group.folder })
+      }}
+      title={`Open ${group.folder}`}
+    >
+      <Icon name="folder" size={14} />
+      <span className="group-name">{relativeLabel(group.folder, openFolder)}</span>
+      <span className="group-count">{count}</span>
+      <Icon name="chevron" size={12} />
+    </button>
+  )
 }
 
 /** Click, Cmd-click and Shift-click selection over the visible items. */
@@ -79,12 +121,12 @@ export function Thumb({ item, box }: { item: LibraryItem; box: number }) {
   )
 }
 
-export function ItemGrid({ items }: ViewProps) {
+export function ItemGrid({ items, groups, openFolder = '' }: ViewProps) {
   const thumbSize = useApp((s) => s.thumbSize)
   const { chosen, onClick, onDragStart } = useSelection(items)
-  return (
+  const grid = (list: LibraryItem[]) => (
     <div className="grid" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${thumbSize}px, 1fr))` }}>
-      {items.map((item) => (
+      {list.map((item) => (
         <div
           key={item.path}
           className={`card ${chosen.has(item.path) ? 'selected' : ''}`}
@@ -109,6 +151,17 @@ export function ItemGrid({ items }: ViewProps) {
       ))}
     </div>
   )
+  if (!sectioned(groups)) return grid(items)
+  return (
+    <div className="folder-groups">
+      {groups.map((g) => (
+        <section key={g.folder} className="folder-group">
+          <GroupHeader group={g} openFolder={openFolder} />
+          {grid(g.items)}
+        </section>
+      ))}
+    </div>
+  )
 }
 
 const COLUMNS: Array<{ key: SortKey | null; label: string; className?: string }> = [
@@ -123,7 +176,7 @@ const COLUMNS: Array<{ key: SortKey | null; label: string; className?: string }>
   { key: 'modifiedAt', label: 'Modified' }
 ]
 
-export function ItemList({ items }: ViewProps) {
+export function ItemList({ items, groups, openFolder = '' }: ViewProps) {
   const sort = useApp((s) => s.sort)
   const setSort = useApp((s) => s.setSort)
   const { chosen, onClick, onDragStart } = useSelection(items)
@@ -147,8 +200,16 @@ export function ItemList({ items }: ViewProps) {
           ))}
         </tr>
       </thead>
-      <tbody>
-        {items.map((item) => (
+      {(sectioned(groups) ? groups : [{ folder: '', items }]).map((g) => (
+      <tbody key={g.folder}>
+        {sectioned(groups) && (
+          <tr className="group-row">
+            <td colSpan={COLUMNS.length}>
+              <GroupHeader group={g} openFolder={openFolder} />
+            </td>
+          </tr>
+        )}
+        {g.items.map((item) => (
           <tr
             key={item.path}
             className={chosen.has(item.path) ? 'selected' : ''}
@@ -184,6 +245,7 @@ export function ItemList({ items }: ViewProps) {
           </tr>
         ))}
       </tbody>
+      ))}
     </table>
   )
 }

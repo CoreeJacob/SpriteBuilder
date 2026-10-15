@@ -5,8 +5,7 @@ import type { LibraryItem } from '@shared/types'
 import { attempt, useApp } from '@/app/store'
 import { itemUrl, loadImage } from '@/lib/fileUrl'
 import { confirmDiscard as confirmStudioDiscard } from '@/studio/io'
-import { createDoc, MAX_SIZE, newId } from '@/studio/model'
-import { uniqueColors } from '@/studio/raster'
+import { docFromFrames, MAX_SIZE } from '@/studio/model'
 import { useStudio } from '@/studio/store'
 import { adjust, crop, isIdentity, sliceRects, type Img } from './ops'
 import { MAX_EDIT_SIZE, useEditor, type EditorSource } from './store'
@@ -160,13 +159,7 @@ export function sliceToStudio(): void {
 function framesToStudio(frames: Img[], source: EditorSource, name: string): void {
   if (!confirmStudioDiscard()) return
   const { width, height } = frames[0]
-  const doc = createDoc(width, height)
-  const layer = doc.layers[0].id
-  doc.frames = frames.map((f) => ({ id: newId(), duration: 100, cels: { [layer]: f.data.slice() } }))
-  const all = new Uint8ClampedArray(frames.reduce((n, f) => n + f.data.length, 0))
-  frames.reduce((offset, f) => (all.set(f.data, offset), offset + f.data.length), 0)
-  const colors = uniqueColors(all, 64)
-  if (colors.length) doc.palette = { name: 'Image colours', colors }
+  const doc = docFromFrames(width, height, frames.map((f) => ({ pixels: f.data, duration: 100 })))
   useStudio.getState().loadDoc(doc, { savedPath: null, name, folder: source.folder })
   useStudio.setState({ dirty: true }) // a new sprite that hasn't been saved yet
   useApp.getState().setView('studio')

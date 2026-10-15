@@ -67,3 +67,25 @@ describe('visibleItems', () => {
     expect(names(sorted)).toEqual(['water.gif', 'grass.png', 'photo.jpeg', 'hero.png'])
   })
 })
+
+import { groupByFolder } from './filter'
+
+describe('groupByFolder', () => {
+  it('puts the open folder first, then subfolders in tree order, keeping the sort inside groups', () => {
+    const list = [
+      item('Tiles/Water/b.png'),
+      item('Tiles/z.png'),
+      item('Tiles/Lava/a.png'),
+      item('Tiles/a.png'),
+      item('Tiles/Water/Deep/c.png'),
+      item('Tiles/Lava Rock/d.png')
+    ]
+    const groups = groupByFolder(list, 'Tiles')
+    expect(groups.map((g) => g.folder)).toEqual(['Tiles', 'Tiles/Lava', 'Tiles/Lava Rock', 'Tiles/Water', 'Tiles/Water/Deep'])
+    expect(groups[0].items.map((i) => i.name)).toEqual(['z.png', 'a.png']) // input order kept
+  })
+
+  it('works when the open folder has no images of its own', () => {
+    expect(groupByFolder([item('A/B/x.png')], 'A').map((g) => g.folder)).toEqual(['A/B'])
+  })
+})

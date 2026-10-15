@@ -161,3 +161,35 @@ export function visibleItems(
 export function allTags(items: LibraryItem[]): string[] {
   return [...new Set(items.flatMap((i) => i.tags))].sort(collator.compare)
 }
+
+export interface FolderGroup {
+  folder: string
+  items: LibraryItem[]
+}
+
+/**
+ * Splits items into one group per folder: the open folder's own images first, then
+ * each subfolder in tree order. Order inside a group follows the current sort.
+ */
+export function groupByFolder(items: LibraryItem[], openFolder: string): FolderGroup[] {
+  const groups = new Map<string, LibraryItem[]>()
+  for (const item of items) {
+    const list = groups.get(item.folder)
+    if (list) list.push(item)
+    else groups.set(item.folder, [item])
+  }
+  // Sorting folder paths piece by piece keeps parents directly above their children.
+  const key = (folder: string): string[] => folder.split('/').map((p) => p.toLowerCase())
+  const compare = (a: string, b: string): number => {
+    if (a === openFolder) return -1
+    if (b === openFolder) return 1
+    const ka = key(a)
+    const kb = key(b)
+    for (let i = 0; i < Math.min(ka.length, kb.length); i++) {
+      const c = collator.compare(ka[i], kb[i])
+      if (c) return c
+    }
+    return ka.length - kb.length
+  }
+  return [...groups.keys()].sort(compare).map((folder) => ({ folder, items: groups.get(folder)! }))
+}

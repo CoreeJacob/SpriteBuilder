@@ -51,6 +51,9 @@ const PATHS = {
   stop: 'M7 7h10v10H7z',
   prevFrame: 'M6 5v14M19 5l-10 7 10 7z',
   nextFrame: 'M18 5v14M5 5l10 7-10 7z',
+  resize: 'M4 9V4h5M20 15v5h-5M4 4l6 6M20 20l-6-6',
+  tag: 'M3 12V4h8l9 9-8 8zM7.5 8.5h.01',
+  more: 'M5 12h.01M12 12h.01M19 12h.01',
   onion: 'M9 6a6 6 0 1 0 0 12M15 6a6 6 0 1 1 0 12M12 7.5a6 6 0 0 1 0 9'
 } as const
 

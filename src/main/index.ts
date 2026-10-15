@@ -10,9 +10,11 @@ import {
   type ImportedFile,
   type LibrarySnapshot,
   type MenuCommand,
+  type SavedPalette,
   type SaveSpriteRequest
 } from '@shared/types'
 import { Library } from './library'
+import { Recovery } from './recovery'
 
 // Library files are served to the UI as sprite://library/<relative path>.
 protocol.registerSchemesAsPrivileged([
@@ -45,6 +47,7 @@ async function saveSettings(settings: Settings): Promise<void> {
 }
 
 let mainWindow: BrowserWindow | null = null
+let recovery: Recovery
 let library: Library | null = null
 
 const broadcast = (snapshot: LibrarySnapshot): void => {
@@ -90,7 +93,11 @@ function createWindow(): void {
       message: 'You have unsaved changes.',
       detail: 'If you leave now, those changes are lost.'
     })
-    if (choice === 0) event.preventDefault()
+    if (choice === 0) {
+      // Discarding on purpose: don't offer to bring this work back next time.
+      void recovery.clear()
+      event.preventDefault()
+    }
   })
 
   // Open external links in the browser, never inside the app.
@@ -204,6 +211,21 @@ function registerIpc(): void {
     return result.filePath
   })
 
+  handle('recovery:write', (content: string) => recovery.write(content))
+  handle('recovery:read', () => recovery.read())
+  handle('recovery:clear', () => recovery.clear())
+  handle('palettes:list', () => lib().listPalettes())
+  handle('palettes:save', (palette: SavedPalette) => lib().savePalette(palette))
+  handle('palettes:delete', (name: string) => lib().deletePalette(name))
+  handle('palettes:lospec', async (slug: string) => {
+    if (!/^[a-z0-9-]+$/.test(slug)) throw new Error('That doesn’t look like a Lospec palette name')
+    const response = await net.fetch(`https://lospec.com/palette-list/${slug}.json`)
+    if (!response.ok) throw new Error(`Lospec has no palette called “${slug}”`)
+    const data = (await response.json()) as { name?: string; colors?: string[] }
+    const colors = (data.colors ?? []).filter((c) => /^[0-9a-f]{6}$/i.test(c)).map((c) => `#${c.toLowerCase()}`)
+    if (!colors.length) throw new Error('That palette has no colours')
+    return { name: data.name || slug, colors }
+  })
   handle('sprite:readProject', (p: string) => lib().readProject(p))
   handle('sprite:save', (request: SaveSpriteRequest) => lib().saveSprite(request))
   const saveAs = async (defaultName: string, filter: { name: string; extensions: string[] }): Promise<string | null> => {
@@ -235,6 +257,7 @@ function registerIpc(): void {
 }
 
 app.whenReady().then(async () => {
+  recovery = new Recovery(path.join(app.getPath('userData'), 'recovery'))
   const settings = await loadSettings()
   const root = settings.libraryRoot ?? path.join(app.getPath('pictures'), 'SpriteBuilder Library')
   try {

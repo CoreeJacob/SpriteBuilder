@@ -3,11 +3,14 @@ import { Icon, type IconName } from '@/app/Icon'
 import { useApp } from '@/app/store'
 import { readPastedImage, writeSystemClipboard } from './clipboard'
 import { confirmDiscard, exportGif, exportPng, frameCanvas, saveSprite } from './io'
+import { CanvasSizeDialog } from './CanvasSizeDialog'
 import { LayersPanel } from './LayersPanel'
+import { PalettePanel } from './PalettePanel'
+import { useSavedPalettes } from './savedPalettes'
 import { SheetDialog } from './SheetDialog'
 import { Timeline } from './Timeline'
 import { compositeFrame, MAX_SIZE } from './model'
-import { PALETTES, type Palette } from './palettes'
+import { PALETTES } from './palettes'
 import { PixelCanvas } from './PixelCanvas'
 import { uniqueColors } from './raster'
 import { fitZoom, SHAPE_TOOLS, useStudio, ZOOM_LEVELS, type Tool } from './store'
@@ -37,6 +40,7 @@ export function StudioView() {
   const doc = useStudio((s) => s.doc)
   const [showNew, setShowNew] = useState(false)
   const [showSheet, setShowSheet] = useState(false)
+  const [showSize, setShowSize] = useState(false)
   const [hover, setHover] = useState<[number, number] | null>(null)
 
   useStudioShortcuts(() => setShowNew(true))
@@ -51,7 +55,7 @@ export function StudioView() {
 
   return (
     <div className="studio">
-      <StudioBar onNew={() => confirmDiscard() && setShowNew(true)} onSheet={() => setShowSheet(true)} />
+      <StudioBar onNew={() => confirmDiscard() && setShowNew(true)} onSheet={() => setShowSheet(true)} onSize={() => setShowSize(true)} />
       <div className="studio-body">
         <ToolBox />
         <div className="canvas-column">
@@ -65,6 +69,7 @@ export function StudioView() {
         <SidePanel hover={hover} />
       </div>
       {showSheet && <SheetDialog onClose={() => setShowSheet(false)} />}
+      {showSize && <CanvasSizeDialog onClose={() => setShowSize(false)} />}
       {showNew && (
         <div className="modal-backdrop" onMouseDown={() => setShowNew(false)}>
           <div className="modal wide" onMouseDown={(e) => e.stopPropagation()}>
@@ -174,7 +179,7 @@ function stepZoom(direction: 1 | -1): void {
   setZoom(ZOOM_LEVELS[Math.max(0, Math.min(ZOOM_LEVELS.length - 1, i + direction))])
 }
 
-function StudioBar({ onNew, onSheet }: { onNew: () => void; onSheet: () => void }) {
+function StudioBar({ onNew, onSheet, onSize }: { onNew: () => void; onSheet: () => void; onSize: () => void }) {
   const name = useStudio((s) => s.name)
   const dirty = useStudio((s) => s.dirty)
   const folder = useStudio((s) => s.folder)
@@ -182,6 +187,7 @@ function StudioBar({ onNew, onSheet }: { onNew: () => void; onSheet: () => void 
   const zoom = useStudio((s) => s.zoom)
   const showGrid = useStudio((s) => s.showGrid)
   const tileMode = useStudio((s) => s.tileMode)
+  const docSize = useStudio((s) => (s.doc ? `${s.doc.width}×${s.doc.height}` : ''))
   const mirrorX = useStudio((s) => s.mirrorX)
   const mirrorY = useStudio((s) => s.mirrorY)
   const canUndo = useStudio((s) => s.canUndo)
@@ -226,6 +232,9 @@ function StudioBar({ onNew, onSheet }: { onNew: () => void; onSheet: () => void 
 
       <div className="spacer" />
 
+      <button className="btn small" onClick={onSize} title="Change the sprite's size">
+        <Icon name="resize" size={14} /> {docSize}
+      </button>
       <button className="icon-btn" disabled={!canUndo} onClick={s.undo} title="Undo (⌘Z)">
         <Icon name="undo" />
       </button>
@@ -266,6 +275,8 @@ function StudioBar({ onNew, onSheet }: { onNew: () => void; onSheet: () => void 
 
 function ExportMenu({ onSheet }: { onSheet: () => void }) {
   const frames = useStudio((s) => s.doc?.frames.length ?? 1)
+  const ranged = useStudio((s) => s.rangeStart !== null)
+  const [rangeFrom, rangeTo] = useStudio.getState().frameRange()
   const [open, setOpen] = useState(false)
   const [scale, setScale] = useState(4)
   const run = (action: () => void): void => {
@@ -296,6 +307,11 @@ function ExportMenu({ onSheet }: { onSheet: () => void }) {
             <button className="dropdown-item" onClick={() => run(() => void exportGif(scale))}>
               <Icon name="play" /> Animated GIF <span className="muted small">{frames} frame{frames === 1 ? '' : 's'}</span>
             </button>
+            {ranged && (
+              <button className="dropdown-item" onClick={() => run(() => void exportGif(scale, true))}>
+                <Icon name="play" /> GIF of selected frames <span className="muted small">{rangeFrom + 1}–{rangeTo + 1}</span>
+              </button>
+            )}
             <button className="dropdown-item" onClick={() => run(onSheet)}>
               <Icon name="grid" /> Sprite sheet… <span className="muted small">PNG + JSON</span>
             </button>
@@ -355,27 +371,30 @@ function SidePanel({ hover }: { hover: [number, number] | null }) {
   const floating = useStudio((s) => s.floating)
   const [tiled, setTiled] = useState(false)
   const previewRef = useRef<HTMLCanvasElement>(null)
-  const { setPrimary, setSecondary, setPalette, addToPalette, removeFromPalette } = useStudio.getState()
+  const { setPrimary, setSecondary } = useStudio.getState()
 
   const frame = useStudio((s) => s.frame)
   const playing = useStudio((s) => s.playing)
+  const rangeStart = useStudio((s) => s.rangeStart)
   const [tick, setTick] = useState(0)
 
   // While playing, step through the frames using each frame's own duration.
+  // With several frames shift-selected (or a tag clicked), only those frames play.
   useEffect(() => {
     if (!playing) return
-    let i = frame
+    const [first, last] = rangeStart === null ? [0, doc.frames.length - 1] : useStudio.getState().frameRange()
+    let i = first
     let timer: ReturnType<typeof setTimeout>
     const step = (): void => {
       setTick(i)
       timer = setTimeout(() => {
-        i = (i + 1) % doc.frames.length
+        i = i >= last ? first : i + 1
         step()
       }, doc.frames[i]?.duration ?? 100)
     }
     step()
     return () => clearTimeout(timer)
-  }, [playing, doc, frame])
+  }, [playing, doc, frame, rangeStart])
   const shown = playing ? Math.min(tick, doc.frames.length - 1) : frame
 
   // Colours across every frame, so the palette view covers the whole animation.
@@ -448,49 +467,12 @@ function SidePanel({ hover }: { hover: [number, number] | null }) {
 
       <LayersPanel />
 
-      <section>
-        <div className="panel-heading">
-          <span>Palette</span>
-          <select
-            className="select small"
-            value={PALETTES.some((p) => p.name === doc.palette.name) ? doc.palette.name : ''}
-            onChange={(e) => {
-              const p = PALETTES.find((x) => x.name === e.target.value)
-              if (p) setPalette(p)
-            }}
-          >
-            {!PALETTES.some((p) => p.name === doc.palette.name) && <option value="">{doc.palette.name}</option>}
-            {PALETTES.map((p) => (
-              <option key={p.name} value={p.name}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <Swatches
-          colors={doc.palette.colors}
-          primary={primary}
-          secondary={secondary}
-          onPrimary={setPrimary}
-          onSecondary={setSecondary}
-          onRemove={removeFromPalette}
-        />
-        <div className="palette-actions">
-          <button className="btn small" onClick={() => addToPalette(primary)} disabled={doc.palette.colors.includes(primary)}>
-            <Icon name="plus" size={12} /> Add front colour
-          </button>
-          {used.length > 0 && (
-            <button
-              className="btn small"
-              onClick={() => setPalette({ name: 'Sprite colours', colors: used.slice(0, 64) } satisfies Palette)}
-              title="Replace the palette with the colours used in this sprite"
-            >
-              From sprite
-            </button>
-          )}
-        </div>
-        <p className="muted small">Click: front colour · Right-click: back colour · ⌥-click: remove</p>
-      </section>
+      <PalettePanel
+        used={used}
+        swatches={(colors, onRemove) => (
+          <Swatches colors={colors} primary={primary} secondary={secondary} onPrimary={setPrimary} onSecondary={setSecondary} onRemove={onRemove} />
+        )}
+      />
 
       <section>
         <div className="panel-heading">
@@ -549,6 +531,7 @@ function NewSpritePanel({ onCreated, onCancel }: { onCreated: () => void; onCanc
   const [width, setWidth] = useState(16)
   const [height, setHeight] = useState(16)
   const [paletteName, setPaletteName] = useState(PALETTES[0].name)
+  const saved = useSavedPalettes((s) => s.list)
 
   const valid = width >= 1 && height >= 1 && width <= MAX_SIZE && height <= MAX_SIZE
 
@@ -556,7 +539,10 @@ function NewSpritePanel({ onCreated, onCancel }: { onCreated: () => void; onCanc
     if (!valid) return
     // New sprites save into whichever library folder is open.
     useStudio.setState({ folder: scope.kind === 'folder' ? scope.path : '' })
-    useStudio.getState().newDoc(width, height, PALETTES.find((p) => p.name === paletteName))
+    const palette = paletteName.startsWith('mine:')
+      ? saved.find((p) => `mine:${p.name}` === paletteName)
+      : PALETTES.find((p) => p.name === paletteName)
+    useStudio.getState().newDoc(width, height, palette)
     onCreated()
   }
 
@@ -592,11 +578,22 @@ function NewSpritePanel({ onCreated, onCancel }: { onCreated: () => void; onCanc
         <label className="field inline">
           <span>Palette</span>
           <select className="select" value={paletteName} onChange={(e) => setPaletteName(e.target.value)}>
-            {PALETTES.map((p) => (
-              <option key={p.name} value={p.name}>
-                {p.name} ({p.colors.length})
-              </option>
-            ))}
+            <optgroup label="Built in">
+              {PALETTES.map((p) => (
+                <option key={p.name} value={p.name}>
+                  {p.name} ({p.colors.length})
+                </option>
+              ))}
+            </optgroup>
+            {saved.length > 0 && (
+              <optgroup label="My palettes">
+                {saved.map((p) => (
+                  <option key={`mine-${p.name}`} value={`mine:${p.name}`}>
+                    {p.name} ({p.colors.length})
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
         </label>
       </div>

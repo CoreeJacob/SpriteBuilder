@@ -32,9 +32,15 @@ npm run dist     # build a .dmg into dist/
 
 Phases 1–5 of the plan are done:
 - **Library:** folders, tags, filters and search.
-- **Pixel Studio:** drawing tools, layers, animation, and GIF and sprite-sheet export.
+- **Pixel Studio:** drawing tools, layers, animation with named tags, canvas resize, saved and imported palettes, GIF import, GIF and sprite-sheet export, and autosave with crash recovery.
 - **Image Editor:** crop, resize, adjustments, colour tools and a sprite-sheet slicer.
 
-Next up is phase 6 (polish): bulk actions, a zip backup of the library, and more keyboard shortcuts.
+Next up is phase 6 (polish): a zip backup of the library, a shortcuts cheat sheet, and a light theme.
 
 To install the app into /Applications after changing the code, run `npm run install-app`.
+
+## Data files
+
+- `<library>/.spritebuilder/library.json`: tags, notes and other per-image details.
+- `<library>/.spritebuilder/palettes.json`: your saved palettes.
+- `~/Library/Application Support/spritebuilder/recovery/`: the Pixel Studio autosave, used only after a crash.

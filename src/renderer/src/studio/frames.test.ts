@@ -55,3 +55,41 @@ describe('moveLayerTo', () => {
     expect(doc.layers.map((l) => l.id)).toEqual([a, b, c])
   })
 })
+
+import { addTag, deleteTag } from './frames'
+
+describe('tags follow frame edits', () => {
+  const setup = () => {
+    const doc = createDoc(1, 1)
+    for (let i = 0; i < 5; i++) addFrame(doc, i) // 6 frames: 0–5
+    const idle = addTag(doc, 0, 1, 'idle')
+    const walk = addTag(doc, 2, 4, 'walk')
+    return { doc, idle, walk }
+  }
+
+  it('grows a tag when a frame is added inside or at its end, and shifts later tags', () => {
+    const { doc, idle, walk } = setup()
+    addFrame(doc, 1) // after idle's last frame → joins idle
+    expect([idle.from, idle.to, walk.from, walk.to]).toEqual([0, 2, 3, 5])
+    duplicateFrame(doc, 3) // inside walk
+    expect([walk.from, walk.to]).toEqual([3, 6])
+  })
+
+  it('shrinks tags when frames are deleted and drops a tag with no frames left', () => {
+    const { doc, idle, walk } = setup()
+    deleteFrame(doc, 0)
+    expect([idle.from, idle.to, walk.from, walk.to]).toEqual([0, 0, 1, 3])
+    deleteFrame(doc, 0)
+    expect(doc.tags.map((t) => t.name)).toEqual(['walk'])
+    expect([walk.from, walk.to]).toEqual([0, 2])
+  })
+
+  it('keeps tags in order and inside the frames', () => {
+    const doc = createDoc(1, 1)
+    addFrame(doc, 0)
+    const t = addTag(doc, 5, -2, ' jump ')
+    expect([t.from, t.to, t.name]).toEqual([0, 1, 'jump'])
+    deleteTag(doc, t.id)
+    expect(doc.tags).toEqual([])
+  })
+})
