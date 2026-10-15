@@ -2,6 +2,7 @@
 
 import { stripExt } from '@shared/paths'
 import type { LibraryItem } from '@shared/types'
+import { decideSave } from '@/app/saveTarget'
 import { attempt, useApp } from '@/app/store'
 import { itemUrl, loadImage } from '@/lib/fileUrl'
 import { encodeGif } from './exporters'
@@ -139,17 +140,20 @@ export async function saveSprite(saveAs = false): Promise<void> {
   let folder = studio.folder
   let overwrite = true
   if (saveAs || !studio.savedPath) {
+    const current = studio.savedPath ? `“${studio.savedPath.split('/').pop()}”` : null
     const answer = await app.askNameAndFolder({
       title: saveAs ? 'Save Sprite As' : 'Save Sprite',
-      label: 'Saves a PNG plus an editable .sprite.json.',
+      label: `Saves a PNG plus an editable .sprite.json.${current ? ` Keep the name to update ${current}.` : ''}`,
       value: studio.name,
       folder: studio.folder,
       confirmLabel: 'Save'
     })
     if (!answer) return
+    const decision = decideSave(app.library?.items ?? [], answer.folder, answer.name, studio.savedPath, { mayReplaceSprites: true })
+    if (decision.kind === 'replace' && !window.confirm(`“${decision.path}” already exists. Replace it?`)) return
     name = answer.name
     folder = answer.folder
-    overwrite = false
+    overwrite = decision.kind !== 'new'
   }
 
   const doc = studio.doc

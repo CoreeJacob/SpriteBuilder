@@ -2,6 +2,7 @@
 
 import { joinRel, stripExt, uniqueName } from '@shared/paths'
 import type { LibraryItem } from '@shared/types'
+import { decideSave } from '@/app/saveTarget'
 import { attempt, useApp } from '@/app/store'
 import { itemUrl, loadImage } from '@/lib/fileUrl'
 import { confirmDiscard as confirmStudioDiscard } from '@/studio/io'
@@ -105,7 +106,8 @@ export async function saveCopy(): Promise<void> {
   commitAdjustments()
   const { source, image } = useEditor.getState()
   if (!source || !image) return
-  const answer = await useApp.getState().askNameAndFolder({
+  const app = useApp.getState()
+  const answer = await app.askNameAndFolder({
     title: 'Save as Copy',
     label: 'Saves a new PNG. The original is left as it is.',
     value: `${source.name}-edited`,
@@ -113,9 +115,15 @@ export async function saveCopy(): Promise<void> {
     confirmLabel: 'Save'
   })
   if (!answer) return
+  const decision = decideSave(app.library?.items ?? [], answer.folder, answer.name, source.path, { mayReplaceSprites: false })
+  if (decision.kind === 'blocked') return void app.notify(decision.reason, 'error')
+  if (decision.kind === 'replace' && !window.confirm(`“${decision.path}” already exists. Replace it?`)) return
   const data = await encode(image, 'png')
-  const added = await attempt(() => window.api.importData(answer.folder, [{ name: `${stripExt(answer.name)}.png`, data }]))
-  const path = added?.[0]
+  // A name that's already taken replaces that file (after asking); a new name makes a new file.
+  const path =
+    decision.kind === 'new'
+      ? (await attempt(() => window.api.importData(answer.folder, [{ name: `${stripExt(answer.name)}.png`, data }])))?.[0]
+      : await attempt(() => window.api.replaceItem(decision.path, data))
   if (!path) return
   const file = path.slice(path.lastIndexOf('/') + 1)
   const copy: EditorSource = { path, name: stripExt(file), folder: answer.folder, ext: 'png', hasProject: false }
