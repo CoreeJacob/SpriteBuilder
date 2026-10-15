@@ -87,7 +87,7 @@ function createWindow(): void {
       buttons: ['Discard Changes', 'Cancel'],
       defaultId: 1,
       cancelId: 1,
-      message: 'You have unsaved changes in Pixel Studio.',
+      message: 'You have unsaved changes.',
       detail: 'If you leave now, those changes are lost.'
     })
     if (choice === 0) event.preventDefault()
@@ -195,6 +195,7 @@ function registerIpc(): void {
   handle('items:delete', (paths: string[]) => lib().deleteItems(paths))
   handle('items:updateMeta', (paths: string[], patch: Partial<EditableMeta>) => lib().updateMeta(paths, patch))
   handle('items:setComputed', (entries: ComputedMeta[]) => lib().setComputedMeta(entries))
+  handle('items:replace', (p: string, data: Uint8Array) => lib().replaceItem(p, data))
   handle('items:reveal', (p: string) => shell.showItemInFolder(lib().abs(p)))
   handle('items:export', async (p: string) => {
     const result = await dialog.showSaveDialog(mainWindow!, { defaultPath: basenameRel(p) })

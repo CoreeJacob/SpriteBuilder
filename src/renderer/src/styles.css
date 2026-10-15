@@ -1497,3 +1497,203 @@ textarea.input {
 .sheet-options .input {
   width: 100%;
 }
+
+/* ---------- image editor ---------- */
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.editor-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  flex: 1;
+  min-height: 0;
+}
+.editor-viewport {
+  position: relative;
+}
+.editor-canvas-wrap {
+  position: relative;
+  box-shadow: 0 0 0 1px var(--border-strong), 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+.editor-canvas-wrap.mode-crop,
+.editor-canvas-wrap.mode-pick,
+.editor-canvas-wrap.mode-wand {
+  cursor: crosshair;
+}
+.editor-canvas {
+  display: block;
+}
+.editor-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+.crop-shade {
+  fill: rgba(8, 9, 12, 0.6);
+}
+.crop-box {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+  vector-effect: non-scaling-stroke;
+}
+.slice-cell {
+  fill: rgba(108, 140, 255, 0.08);
+  stroke: var(--accent);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.crop-label {
+  position: absolute;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(10, 11, 14, 0.85);
+  font: 11px var(--mono);
+  pointer-events: none;
+}
+.zoom-readout {
+  position: absolute;
+  right: 12px;
+  bottom: 10px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(10, 11, 14, 0.7);
+  color: var(--muted);
+  font: 11px var(--mono);
+}
+.editor-status {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding: 6px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 11px;
+  font-family: var(--mono);
+}
+.mode-hint {
+  margin-left: auto;
+  font-family: var(--font);
+  color: var(--accent);
+}
+.mini-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 2px;
+  vertical-align: -1px;
+}
+.editor-panel .panel-section {
+  padding: 0;
+  gap: 0;
+}
+.section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 11px 14px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+.section-toggle span:nth-child(2) {
+  flex: 1;
+  text-align: left;
+}
+.section-toggle:hover {
+  color: var(--text);
+}
+.section-body {
+  display: grid;
+  gap: 10px;
+  padding: 0 14px 14px;
+}
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.resize-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.resize-grid .input {
+  width: 100%;
+}
+.adjust-row {
+  display: grid;
+  grid-template-columns: 74px 1fr 34px;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.adjust-row .slider {
+  width: 100%;
+}
+.adjust-value {
+  text-align: right;
+  font-family: var(--mono);
+  font-size: 11px;
+  cursor: default;
+}
+.picked {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 11px var(--mono);
+}
+.color-input {
+  width: 32px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
+}
+.editor-swatches {
+  grid-template-columns: repeat(auto-fill, minmax(18px, 1fr));
+}
+.action-row.two {
+  grid-template-columns: 1fr 1fr;
+}
+.editor-picker {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  height: 100%;
+  padding: 24px 28px;
+  overflow-y: auto;
+}
+.picker-head {
+  display: flex;
+  align-items: start;
+  gap: 16px;
+}
+.picker-head p {
+  margin: 6px 0 0;
+}
+.picker-grid .card {
+  border: 1px solid transparent;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.picker-grid .card:hover {
+  border-color: var(--accent);
+}

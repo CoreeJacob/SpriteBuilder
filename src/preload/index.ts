@@ -22,6 +22,7 @@ const api: SpriteBuilderApi = {
   renameItem: (path, name) => ipcRenderer.invoke('items:rename', path, name),
   duplicateItem: (path) => ipcRenderer.invoke('items:duplicate', path),
   deleteItems: (paths) => ipcRenderer.invoke('items:delete', paths),
+  replaceItem: (path, data) => ipcRenderer.invoke('items:replace', path, data),
   updateMeta: (paths, patch) => ipcRenderer.invoke('items:updateMeta', paths, patch),
   setComputedMeta: (entries) => ipcRenderer.invoke('items:setComputed', entries),
   revealItem: (path) => ipcRenderer.invoke('items:reveal', path),

@@ -272,6 +272,15 @@ export class Library {
     })
   }
 
+  /** Overwrites an existing image with edited bytes. Tags, notes and other metadata stay. */
+  replaceItem(rel: string, data: Uint8Array): Promise<string> {
+    return this.mutate(async () => {
+      if (!isImage(basenameRel(rel)) || !(await exists(this.abs(rel)))) throw new Error(`"${rel}" is not in the library`)
+      await fs.writeFile(this.abs(rel), data)
+      return rel
+    })
+  }
+
   /** Saves a sprite sheet (and its frame data) into a library folder. Returns the PNG's path. */
   saveSheet(folder: string, name: string, png: Uint8Array, json: string | null): Promise<string> {
     return this.mutate(async () => {

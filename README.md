@@ -30,5 +30,11 @@ npm run dist     # build a .dmg into dist/
 
 ## Status
 
-Phases 1–3 of the plan are done: foundation, Library MVP, Pixel Studio MVP.
-Next up: shapes, selection, mirror drawing, layers, animation and sprite-sheet export (phase 4), then the Image Editor (phase 5).
+Phases 1–5 of the plan are done:
+- **Library:** folders, tags, filters and search.
+- **Pixel Studio:** drawing tools, layers, animation, and GIF and sprite-sheet export.
+- **Image Editor:** crop, resize, adjustments, colour tools and a sprite-sheet slicer.
+
+Next up is phase 6 (polish): bulk actions, a zip backup of the library, and more keyboard shortcuts.
+
+To install the app into /Applications after changing the code, run `npm run install-app`.

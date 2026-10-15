@@ -3,6 +3,7 @@ import { useEnrichment } from '@/library/enrich'
 import { LibraryView } from '@/library/LibraryView'
 import { EditorView } from '@/editor/EditorView'
 import { StudioView } from '@/studio/StudioView'
+import { useEditor } from '@/editor/store'
 import { useStudio } from '@/studio/store'
 import { Icon, type IconName } from './Icon'
 import { PromptDialog, Toasts } from './Overlays'
@@ -25,7 +26,9 @@ export function App() {
   const setView = useApp((s) => s.setView)
   const library = useApp((s) => s.library)
   const setLibrary = useApp((s) => s.setLibrary)
-  const dirty = useStudio((s) => s.dirty)
+  const studioDirty = useStudio((s) => s.dirty)
+  const editorDirty = useEditor((s) => s.dirty)
+  const dirty = studioDirty || editorDirty
 
   useEffect(() => {
     void window.api.getLibrary().then(setLibrary)
@@ -40,6 +43,7 @@ export function App() {
         if (isTyping()) document.execCommand(command)
         else if (command === 'selectAll') window.dispatchEvent(new Event(`${view}:selectAll`))
         else if (view === 'studio') useStudio.getState()[command]()
+        else if (view === 'editor') useEditor.getState()[command]()
       }),
     []
   )
@@ -66,7 +70,9 @@ export function App() {
           >
             <Icon name={item.icon} size={20} />
             <span>{item.label}</span>
-            {item.view === 'studio' && dirty && <i className="dot" aria-label="Unsaved changes" />}
+            {((item.view === 'studio' && studioDirty) || (item.view === 'editor' && editorDirty)) && (
+              <i className="dot" aria-label="Unsaved changes" />
+            )}
           </button>
         ))}
       </nav>

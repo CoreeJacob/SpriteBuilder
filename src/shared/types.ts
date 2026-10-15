@@ -73,6 +73,8 @@ export interface SpriteBuilderApi {
   renameItem(path: string, newName: string): Promise<string>
   duplicateItem(path: string): Promise<string>
   deleteItems(paths: string[]): Promise<void>
+  /** Overwrites a library image with new bytes (the Image Editor's Save). */
+  replaceItem(path: string, data: Uint8Array): Promise<string>
   updateMeta(paths: string[], patch: Partial<EditableMeta>): Promise<void>
   setComputedMeta(entries: ComputedMeta[]): Promise<void>
   revealItem(path: string): Promise<void>

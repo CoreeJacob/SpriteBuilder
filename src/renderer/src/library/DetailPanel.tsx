@@ -5,6 +5,7 @@ import { Icon } from '@/app/Icon'
 import { attempt, useApp } from '@/app/store'
 import { itemUrl } from '@/lib/fileUrl'
 import { formatBytes, formatDateTime, formatDimensions } from '@/lib/format'
+import { openInEditor } from '@/editor/io'
 import { openInStudio } from '@/studio/io'
 
 const ZOOMS = ['fit', 1, 2, 4, 8] as const
@@ -184,9 +185,14 @@ function SinglePanel({ item, allTags, folders }: { item: LibraryItem; allTags: s
 
         <div className="actions">
           {item.ext !== 'svg' && (
-            <button className="btn primary" onClick={() => void openInStudio(item)}>
-              <Icon name="studio" /> {item.hasProject ? 'Edit in Pixel Studio' : 'Open in Pixel Studio'}
-            </button>
+            <div className="action-row two">
+              <button className="btn primary" onClick={() => void openInStudio(item)} title="Draw on it pixel by pixel">
+                <Icon name="studio" /> {item.hasProject ? 'Edit Sprite' : 'Pixel Studio'}
+              </button>
+              <button className="btn" onClick={() => void openInEditor(item)} title="Crop, resize, recolour or slice it">
+                <Icon name="editor" /> Edit Image
+              </button>
+            </div>
           )}
           <div className="action-row">
             <button className="btn" onClick={() => void attempt(() => window.api.revealItem(item.path))} title="Show in Finder">
