@@ -5,6 +5,7 @@ import { Thumb } from '@/library/ItemViews'
 import { parseHex, toHex } from '@/studio/raster'
 import {
   commitAdjustments,
+  confirmDiscard,
   exportImage,
   openImageInStudio,
   openInEditor,
@@ -165,6 +166,13 @@ function EditorBar({ onOpenOther }: { onOpenOther: () => void }) {
     <header className="studio-bar">
       <button className="btn" onClick={onOpenOther} title="Choose another image from the Library">
         <Icon name="library" /> Open…
+      </button>
+      <button
+        className="btn"
+        onClick={() => confirmDiscard() && useEditor.getState().close()}
+        title="Close this image (asks first if it has unsaved edits)"
+      >
+        <Icon name="close" /> Close
       </button>
       <button className="btn primary" onClick={() => void save()} title={saveTip}>
         <Icon name="save" /> {canOverwrite ? 'Save' : 'Save Copy'}

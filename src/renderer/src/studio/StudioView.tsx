@@ -200,6 +200,13 @@ function StudioBar({ onNew, onSheet, onSize }: { onNew: () => void; onSheet: () 
       <button className="btn" onClick={onNew} title="New sprite (⌘N)">
         <Icon name="plus" /> New
       </button>
+      <button
+        className="btn"
+        onClick={() => confirmDiscard() && useStudio.getState().closeDoc()}
+        title="Close this sprite (asks first if it has unsaved changes)"
+      >
+        <Icon name="close" /> Close
+      </button>
       <button className="btn primary" onClick={() => void saveSprite()} title="Save to library (⌘S)">
         <Icon name="save" /> Save
       </button>
