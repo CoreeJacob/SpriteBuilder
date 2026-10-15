@@ -1,16 +1,11 @@
-import { useMemo, useState, type DragEvent } from 'react'
+import { useCallback, useMemo, useState, type DragEvent } from 'react'
 import { basenameRel, dirnameRel, isInside } from '@shared/paths'
+import { ContextMenu, type MenuEntry, type MenuRequest } from '@/app/ContextMenu'
 import { Icon } from '@/app/Icon'
 import { attempt, useApp } from '@/app/store'
 import type { Scope } from './filter'
 
 export const ITEM_DRAG_TYPE = 'application/x-spritebuilder-items'
-
-interface MenuState {
-  folder: string
-  x: number
-  y: number
-}
 
 /** Handlers that let a sidebar entry accept library items dragged onto it. */
 export const FOLDER_DRAG_TYPE = 'application/x-spritebuilder-folder'
@@ -88,7 +83,8 @@ export function FolderSidebar() {
   const scope = useApp((s) => s.scope)
   const setScope = useApp((s) => s.setScope)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
-  const [menu, setMenu] = useState<MenuState | null>(null)
+  const [menu, setMenu] = useState<MenuRequest | null>(null)
+  const closeMenu = useCallback(() => setMenu(null), [])
 
   const counts = useMemo(() => {
     const direct = new Map<string, number>()
@@ -118,7 +114,6 @@ export function FolderSidebar() {
   })
 
   const newFolder = async (parent: string): Promise<void> => {
-    setMenu(null)
     const name = await useApp.getState().ask({
       title: 'New Folder',
       label: `Inside "${parent || 'Library'}"`,
@@ -136,7 +131,6 @@ export function FolderSidebar() {
   }
 
   const renameFolder = async (folder: string): Promise<void> => {
-    setMenu(null)
     const name = await useApp.getState().ask({ title: 'Rename Folder', value: basenameRel(folder), confirmLabel: 'Rename' })
     if (!name) return
     const renamed = await attempt(() => window.api.renameFolder(folder, name))
@@ -146,15 +140,25 @@ export function FolderSidebar() {
   }
 
   const deleteFolder = async (folder: string): Promise<void> => {
-    setMenu(null)
     if (!window.confirm(`Move "${basenameRel(folder)}" and everything in it to the Trash?`)) return
     await attempt(() => window.api.deleteFolder(folder))
   }
 
+  const folderMenu = (folder: string): MenuEntry[] => [
+    { label: 'New Folder Inside…', icon: 'folderPlus', onSelect: () => void newFolder(folder) },
+    ...(folder
+      ? ([{ label: 'Rename…', icon: 'rename', onSelect: () => void renameFolder(folder) }] satisfies MenuEntry[])
+      : []),
+    { label: 'Show in Finder', icon: 'reveal', onSelect: () => void attempt(() => window.api.revealItem(folder)) },
+    ...(folder
+      ? (['separator', { label: 'Move to Trash', icon: 'trash', danger: true, onSelect: () => void deleteFolder(folder) }] satisfies MenuEntry[])
+      : [])
+  ]
+
   const currentFolder = scope.kind === 'folder' ? scope.path : ''
 
   return (
-    <aside className="sidebar" onClick={() => setMenu(null)}>
+    <aside className="sidebar">
       <div className="sidebar-section">
         <SidebarEntry
           icon="all"
@@ -187,7 +191,7 @@ export function FolderSidebar() {
           count={counts.get('') ?? 0}
           active={isActive({ kind: 'folder', path: '' })}
           onClick={() => setScope({ kind: 'folder', path: '' })}
-          onMenu={(e) => setMenu({ folder: '', x: e.clientX, y: e.clientY })}
+          onMenu={(e) => setMenu({ x: e.clientX, y: e.clientY, entries: folderMenu('') })}
           dropFolder=""
         />
         {visibleFolders.map((folder) => {
@@ -201,7 +205,7 @@ export function FolderSidebar() {
               count={counts.get(folder) ?? 0}
               active={isActive({ kind: 'folder', path: folder })}
               onClick={() => setScope({ kind: 'folder', path: folder })}
-              onMenu={(e) => setMenu({ folder, x: e.clientX, y: e.clientY })}
+              onMenu={(e) => setMenu({ x: e.clientX, y: e.clientY, entries: folderMenu(folder) })}
               expander={hasChildren ? { open: !collapsed.has(folder), toggle: () => toggle(folder) } : undefined}
               dropFolder={folder}
               dragFolder={folder}
@@ -228,17 +232,7 @@ export function FolderSidebar() {
         </button>
       </div>
 
-      {menu && (
-        <div className="context-menu" style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
-          <button onClick={() => void newFolder(menu.folder)}>New Folder Inside</button>
-          {menu.folder !== '' && <button onClick={() => void renameFolder(menu.folder)}>Rename…</button>}
-          {menu.folder !== '' && (
-            <button className="danger" onClick={() => void deleteFolder(menu.folder)}>
-              Move to Trash
-            </button>
-          )}
-        </div>
-      )}
+      {menu && <ContextMenu menu={menu} onClose={closeMenu} />}
     </aside>
   )
 }

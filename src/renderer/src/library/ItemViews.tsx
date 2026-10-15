@@ -7,6 +7,7 @@ import { formatBytes, formatDate, formatDimensions } from '@/lib/format'
 import { openInStudio } from '@/studio/io'
 import type { FolderGroup, SortKey } from './filter'
 import { ITEM_DRAG_TYPE } from './FolderSidebar'
+import { useItemMenu } from './ItemMenu'
 
 interface ViewProps {
   items: LibraryItem[]
@@ -124,6 +125,7 @@ export function Thumb({ item, box }: { item: LibraryItem; box: number }) {
 export function ItemGrid({ items, groups, openFolder = '' }: ViewProps) {
   const thumbSize = useApp((s) => s.thumbSize)
   const { chosen, onClick, onDragStart } = useSelection(items)
+  const menu = useItemMenu()
   const grid = (list: LibraryItem[]) => (
     <div className="grid" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${thumbSize}px, 1fr))` }}>
       {list.map((item) => (
@@ -135,6 +137,7 @@ export function ItemGrid({ items, groups, openFolder = '' }: ViewProps) {
             onClick(e, item)
           }}
           onDoubleClick={() => canOpenInStudio(item) && void openInStudio(item)}
+          onContextMenu={(e) => menu.open(e, item)}
           draggable
           onDragStart={(e) => onDragStart(e, item)}
           title={item.path}
@@ -151,9 +154,17 @@ export function ItemGrid({ items, groups, openFolder = '' }: ViewProps) {
       ))}
     </div>
   )
-  if (!sectioned(groups)) return grid(items)
+  if (!sectioned(groups)) {
+    return (
+      <>
+        {grid(items)}
+        {menu.element}
+      </>
+    )
+  }
   return (
     <div className="folder-groups">
+      {menu.element}
       {groups.map((g) => (
         <section key={g.folder} className="folder-group">
           <GroupHeader group={g} openFolder={openFolder} />
@@ -180,8 +191,11 @@ export function ItemList({ items, groups, openFolder = '' }: ViewProps) {
   const sort = useApp((s) => s.sort)
   const setSort = useApp((s) => s.setSort)
   const { chosen, onClick, onDragStart } = useSelection(items)
+  const menu = useItemMenu()
 
   return (
+    <>
+    {menu.element}
     <table className="list">
       <thead>
         <tr>
@@ -218,6 +232,7 @@ export function ItemList({ items, groups, openFolder = '' }: ViewProps) {
               onClick(e, item)
             }}
             onDoubleClick={() => canOpenInStudio(item) && void openInStudio(item)}
+          onContextMenu={(e) => menu.open(e, item)}
             draggable
             onDragStart={(e) => onDragStart(e, item)}
           >
@@ -247,5 +262,6 @@ export function ItemList({ items, groups, openFolder = '' }: ViewProps) {
       </tbody>
       ))}
     </table>
+    </>
   )
 }
