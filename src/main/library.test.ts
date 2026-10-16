@@ -320,3 +320,31 @@ describe('moving folders', () => {
     expect(await lib.moveFolder('A/B', 'A')).toBe('A/B') // already there
   })
 })
+
+describe('folder watching', () => {
+  it('rescans once for the app’s own changes, but still notices changes made in Finder', async () => {
+    await open()
+    const scan = vi.spyOn(lib as unknown as { scan: () => Promise<void> }, 'scan')
+    await lib.importData('', [{ name: 'own.png', data: PNG }])
+    await new Promise((r) => setTimeout(r, 900)) // long enough for the watcher to have reacted
+    expect(scan).toHaveBeenCalledTimes(1) // just the scan that importData itself does
+
+    await new Promise((r) => setTimeout(r, 300)) // past the grace period
+    await write('from-finder.png') // a change the app didn't make
+    for (let i = 0; i < 30 && !item('from-finder.png'); i++) await new Promise((r) => setTimeout(r, 100))
+    expect(item('from-finder.png')).toBeDefined()
+  })
+})
+
+describe('bulk tags', () => {
+  it('adds and removes tags on many images in one go, keeping their other tags', async () => {
+    await write('a.png')
+    await write('b.png')
+    await open()
+    await lib.updateMeta(['a.png'], { tags: ['hero'] })
+    await lib.updateMeta(['b.png'], { tags: ['enemy', 'old'] })
+    await lib.editTags(['a.png', 'b.png'], ['sprite', ' sprite '], ['old'])
+    expect(item('a.png')?.tags).toEqual(['hero', 'sprite'])
+    expect(item('b.png')?.tags).toEqual(['enemy', 'sprite'])
+  })
+})

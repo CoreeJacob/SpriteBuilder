@@ -6,7 +6,7 @@ import { syncOpenDocuments } from './openDocuments'
 import { attempt, useApp } from './store'
 
 /** Shows a different library. Documents open from the old one are closed (or detached if unsaved). */
-export function switchLibrary(snapshot: LibrarySnapshot): void {
+function switchLibrary(snapshot: LibrarySnapshot): void {
   const app = useApp.getState()
   app.setScope({ kind: 'all' })
   app.setLibrary(snapshot)

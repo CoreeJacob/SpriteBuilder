@@ -4,7 +4,8 @@ import { joinRel, stripExt, uniqueName } from '@shared/paths'
 import type { LibraryItem } from '@shared/types'
 import { decideSave } from '@/app/saveTarget'
 import { attempt, useApp } from '@/app/store'
-import { itemUrl, loadImage } from '@/lib/fileUrl'
+import { canvasToBytes, loadImage, pixelsToCanvas, readPixels } from '@/lib/canvas'
+import { itemUrl } from '@/lib/fileUrl'
 import { confirmDiscard as confirmStudioDiscard } from '@/studio/io'
 import { docFromFrames, MAX_SIZE } from '@/studio/model'
 import { useStudio } from '@/studio/store'
@@ -13,19 +14,9 @@ import { MAX_EDIT_SIZE, useEditor, type EditorSource } from './store'
 
 const MIME: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp' }
 
-export function imgToCanvas(img: Img): HTMLCanvasElement {
-  const canvas = document.createElement('canvas')
-  canvas.width = img.width
-  canvas.height = img.height
-  canvas.getContext('2d')!.putImageData(new ImageData(img.data, img.width, img.height), 0, 0)
-  return canvas
-}
+const imgToCanvas = (img: Img): HTMLCanvasElement => pixelsToCanvas(img.data, img.width, img.height)
 
-export async function encode(img: Img, ext = 'png'): Promise<Uint8Array> {
-  const blob = await new Promise<Blob | null>((resolve) => imgToCanvas(img).toBlob(resolve, MIME[ext] ?? 'image/png', 0.92))
-  if (!blob) throw new Error('Could not encode the image')
-  return new Uint8Array(await blob.arrayBuffer())
-}
+const encode = (img: Img, ext = 'png'): Promise<Uint8Array> => canvasToBytes(imgToCanvas(img), MIME[ext] ?? 'image/png', 0.92)
 
 /** Smooth (non-pixel-art) resize using the browser's high-quality scaler. */
 export function resizeSmooth(img: Img, width: number, height: number): Img {
@@ -44,7 +35,7 @@ export function confirmDiscard(): boolean {
 }
 
 /** The image as it will be saved: committed edits plus any adjustments still being previewed. */
-export function currentImage(): Img | null {
+function currentImage(): Img | null {
   const { image, adjustments } = useEditor.getState()
   if (!image) return null
   return isIdentity(adjustments) ? image : adjust(image, adjustments)
@@ -68,12 +59,7 @@ export async function openInEditor(item: LibraryItem): Promise<void> {
     if (w > MAX_EDIT_SIZE || h > MAX_EDIT_SIZE) {
       throw new Error(`The Image Editor handles images up to ${MAX_EDIT_SIZE}×${MAX_EDIT_SIZE}. This one is ${w}×${h}.`)
     }
-    const canvas = document.createElement('canvas')
-    canvas.width = w
-    canvas.height = h
-    const ctx = canvas.getContext('2d')!
-    ctx.drawImage(el, 0, 0)
-    const image: Img = { width: w, height: h, data: ctx.getImageData(0, 0, w, h).data }
+    const image: Img = { width: w, height: h, data: readPixels(el, w, h) }
     useEditor.getState().open(
       { path: item.path, name: stripExt(item.name), folder: item.folder, ext: item.ext, hasProject: item.hasProject },
       image

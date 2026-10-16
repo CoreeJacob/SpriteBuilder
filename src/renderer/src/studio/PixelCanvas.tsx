@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent, type WheelEvent } from 'react'
 import { useApp } from '@/app/store'
-import { compositeFrame } from './model'
+import { pixelsToCanvas } from '@/lib/canvas'
+import { compositeAt } from './model'
 import {
   constrainEnd,
   ellipsePoints,
@@ -37,6 +38,7 @@ const PICKS_WITH_ALT: Tool[] = ['pencil', 'fill', 'line', 'rect', 'ellipse']
 export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) {
   const doc = useStudio((s) => s.doc)
   const version = useStudio((s) => s.version)
+  const settledVersion = useStudio((s) => s.settledVersion)
   const zoom = useStudio((s) => s.zoom)
   const showGrid = useStudio((s) => s.showGrid)
   const tileMode = useStudio((s) => s.tileMode)
@@ -89,14 +91,7 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
     }
     ctx.imageSmoothingEnabled = false
 
-    const toCanvas = (pixels: Uint8ClampedArray<ArrayBuffer>, w: number, h: number): HTMLCanvasElement => {
-      const c = document.createElement('canvas')
-      c.width = w
-      c.height = h
-      c.getContext('2d')!.putImageData(new ImageData(pixels, w, h), 0, 0)
-      return c
-    }
-    const source = toCanvas(compositeFrame(doc, frame), doc.width, doc.height)
+    const source = pixelsToCanvas(compositeAt(doc, frame, version), doc.width, doc.height)
 
     // Onion skin: the previous frame tinted red and the next tinted blue, faintly
     // underneath. It wraps around, since most game animations loop.
@@ -107,7 +102,7 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
         { index: (frame + 1) % doc.frames.length, tint: 'rgb(70, 150, 255)' }
       ]
       for (const n of doc.frames.length === 2 ? neighbours.slice(0, 1) : neighbours) {
-        const c = toCanvas(compositeFrame(doc, n.index), doc.width, doc.height)
+        const c = pixelsToCanvas(compositeAt(doc, n.index, settledVersion), doc.width, doc.height)
         const cx = c.getContext('2d')!
         cx.globalCompositeOperation = 'source-atop'
         cx.fillStyle = n.tint
@@ -115,7 +110,7 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
         onion.push({ canvas: c, alpha: 0.35 })
       }
     }
-    const lifted = floating ? toCanvas(floating.pixels.slice() as Uint8ClampedArray<ArrayBuffer>, floating.w, floating.h) : null
+    const lifted = floating ? pixelsToCanvas(floating.pixels, floating.w, floating.h) : null
 
     const tileW = doc.width * zoom
     const tileH = doc.height * zoom
@@ -209,7 +204,7 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
       ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)'
       ctx.strokeRect(hx * zoom - 0.5, hy * zoom - 0.5, zoom + 1, zoom + 1)
     }
-  }, [doc, version, zoom, showGrid, tileMode, repeat, hover, selection, floating, mirrorX, mirrorY, tool, frame, onionSkin, resolvedTheme])
+  }, [doc, version, zoom, showGrid, tileMode, repeat, hover, selection, floating, mirrorX, mirrorY, tool, frame, onionSkin, resolvedTheme, settledVersion])
 
   if (!doc) return null
   const W = doc.width
@@ -273,7 +268,7 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
     if (outside) return
 
     if (current === 'eyedropper') {
-      const color = getPixel(compositeFrame(doc, s.frame), W, x, y)
+      const color = getPixel(compositeAt(doc, s.frame, s.version), W, x, y)
       if (color[3] === 0) return
       const hex = toHex([color[0], color[1], color[2], 255])
       if (e.button === 2) s.setSecondary(hex)

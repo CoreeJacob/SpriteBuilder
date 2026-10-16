@@ -4,32 +4,18 @@ import { stripExt } from '@shared/paths'
 import type { LibraryItem } from '@shared/types'
 import { decideSave } from '@/app/saveTarget'
 import { attempt, useApp } from '@/app/store'
-import { itemUrl, loadImage } from '@/lib/fileUrl'
+import { canvasToBytes, loadImage, pixelsToCanvas, readPixels, scaleCanvas } from '@/lib/canvas'
+import { itemUrl } from '@/lib/fileUrl'
 import { encodeGif } from './exporters'
-import { compositeFrame, docFromFrames, docFromPixels, MAX_SIZE, parseDoc, serializeDoc, type SpriteDoc } from './model'
+import { compositeFrame, docFromFrames, MAX_SIZE, parseDoc, serializeDoc, type SpriteDoc } from './model'
 import { useStudio } from './store'
 
 /** Draws one frame onto a new canvas, scaled up with hard pixel edges. */
 export function frameCanvas(doc: SpriteDoc, frame = 0, scale = 1): HTMLCanvasElement {
-  const source = document.createElement('canvas')
-  source.width = doc.width
-  source.height = doc.height
-  source.getContext('2d')!.putImageData(new ImageData(compositeFrame(doc, frame), doc.width, doc.height), 0, 0)
-  if (scale === 1) return source
-  const out = document.createElement('canvas')
-  out.width = doc.width * scale
-  out.height = doc.height * scale
-  const ctx = out.getContext('2d')!
-  ctx.imageSmoothingEnabled = false
-  ctx.drawImage(source, 0, 0, out.width, out.height)
-  return out
+  return scaleCanvas(pixelsToCanvas(compositeFrame(doc, frame), doc.width, doc.height), scale)
 }
 
-export async function pngBytes(doc: SpriteDoc, scale = 1, frame = 0): Promise<Uint8Array> {
-  const blob = await new Promise<Blob | null>((resolve) => frameCanvas(doc, frame, scale).toBlob(resolve, 'image/png'))
-  if (!blob) throw new Error('Could not encode the PNG')
-  return new Uint8Array(await blob.arrayBuffer())
-}
+const pngBytes = (doc: SpriteDoc, scale = 1, frame = 0): Promise<Uint8Array> => canvasToBytes(frameCanvas(doc, frame, scale))
 
 /** Asks before throwing away unsaved Studio work. */
 export function confirmDiscard(): boolean {
@@ -81,12 +67,7 @@ export async function openInStudio(item: LibraryItem): Promise<void> {
     if (w > MAX_SIZE || h > MAX_SIZE) {
       throw new Error(`Pixel Studio works on images up to ${MAX_SIZE}×${MAX_SIZE}. This one is ${w}×${h}.`)
     }
-    const canvas = document.createElement('canvas')
-    canvas.width = w
-    canvas.height = h
-    const ctx = canvas.getContext('2d')!
-    ctx.drawImage(img, 0, 0)
-    const doc = docFromPixels(w, h, ctx.getImageData(0, 0, w, h).data)
+    const doc = docFromFrames(w, h, [{ pixels: readPixels(img, w, h), duration: 100 }])
     // Saving writes back to a PNG, so only a PNG can be updated in place.
     useStudio.getState().loadDoc(doc, { ...location, savedPath: item.ext === 'png' ? item.path : null })
     app.setView('studio')
@@ -105,7 +86,7 @@ interface DecodedFrame {
 }
 
 /** Decodes every frame of an animated image, fully drawn (not just the changed parts). */
-export async function decodeFrames(url: string, type: string): Promise<DecodedFrame[]> {
+async function decodeFrames(url: string, type: string): Promise<DecodedFrame[]> {
   const data = await (await fetch(url)).arrayBuffer()
   if (!(await ImageDecoder.isTypeSupported(type))) throw new Error(`Can't read the frames of this ${type} file.`)
   const decoder = new ImageDecoder({ data, type })
@@ -117,11 +98,8 @@ export async function decodeFrames(url: string, type: string): Promise<DecodedFr
       const { image } = await decoder.decode({ frameIndex: i })
       const width = image.displayWidth
       const height = image.displayHeight
-      const canvas = new OffscreenCanvas(width, height)
-      const ctx = canvas.getContext('2d')!
-      ctx.drawImage(image, 0, 0)
       // Durations come in microseconds; a missing or zero delay plays at 10 FPS like browsers do.
-      frames.push({ width, height, pixels: ctx.getImageData(0, 0, width, height).data, duration: image.duration ? image.duration / 1000 : 100 })
+      frames.push({ width, height, pixels: readPixels(image, width, height), duration: image.duration ? image.duration / 1000 : 100 })
       image.close()
     }
     return frames

@@ -5,7 +5,7 @@ import { useApp } from '@/app/store'
 import { parseDoc, serializeDoc } from './model'
 import { useStudio, type DocLocation } from './store'
 
-export const AUTOSAVE_INTERVAL_MS = 15_000
+const AUTOSAVE_INTERVAL_MS = 15_000
 
 interface RecoveryContent extends DocLocation {
   doc: string // serialized SpriteDoc
@@ -14,7 +14,7 @@ interface RecoveryContent extends DocLocation {
 let lastWrittenVersion = -1
 
 /** Writes the recovery copy if there is unsaved work that hasn't been written yet. */
-export function autosaveNow(): void {
+function autosaveNow(): void {
   const s = useStudio.getState()
   if (!s.doc || !s.dirty || s.version === lastWrittenVersion) return
   lastWrittenVersion = s.version

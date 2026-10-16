@@ -33,8 +33,6 @@ const PATHS = {
   zoomOut: 'M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM15.5 15.5L20 20M8 10.5h5',
   file: 'M6 3h8l5 5v13H6zM14 3v5h5',
   rename: 'M4 20h4L19 9l-4-4L4 16zM13 7l4 4',
-  sort: 'M7 4v16M4 17l3 3 3-3M17 20V4M14 7l3-3 3 3',
-  clear: 'M5 5l14 14M4 12a8 8 0 1 0 16 0 8 8 0 0 0-16 0',
   line: 'M5 19L19 5',
   rect: 'M4 6h16v12H4z',
   shapeFilled: 'M5 7h14v10H5z',

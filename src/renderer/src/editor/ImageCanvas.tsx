@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
+import { drawPixels } from '@/lib/canvas'
 import { normalizeRect, toHex } from '@/studio/raster'
 import { adjust, clampRect, isIdentity, makeTransparent, pixelAt, sliceRects, type Img, type Rect } from './ops'
 import { useEditor } from './store'
@@ -40,9 +41,7 @@ export function ImageCanvas({ onHover }: { onHover: (info: HoverInfo | null) => 
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
-    canvas.width = shown.width
-    canvas.height = shown.height
-    canvas.getContext('2d')!.putImageData(new ImageData(shown.data, shown.width, shown.height), 0, 0)
+    drawPixels(canvas, shown.data, shown.width, shown.height)
   }, [shown])
 
   // "Fit" fills the space; small images get a whole-number zoom so pixels stay square.

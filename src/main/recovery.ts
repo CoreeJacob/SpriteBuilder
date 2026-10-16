@@ -3,8 +3,9 @@
 
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
+import { writeFileAtomic } from './files'
 
-export interface RecoveryFile {
+interface RecoveryFile {
   savedAt: number
   /** The renderer's own JSON (sprite plus where it belongs); the main process only stores it. */
   content: string
@@ -17,11 +18,9 @@ export class Recovery {
     return path.join(this.dir, 'studio-autosave.json')
   }
 
-  async write(content: string): Promise<void> {
-    await fs.mkdir(this.dir, { recursive: true })
+  write(content: string): Promise<void> {
     const data: RecoveryFile = { savedAt: Date.now(), content }
-    await fs.writeFile(`${this.file}.tmp`, JSON.stringify(data), 'utf8')
-    await fs.rename(`${this.file}.tmp`, this.file)
+    return writeFileAtomic(this.file, JSON.stringify(data))
   }
 
   async read(): Promise<RecoveryFile | null> {

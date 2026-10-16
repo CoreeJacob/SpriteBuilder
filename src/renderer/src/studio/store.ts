@@ -37,7 +37,7 @@ type HistoryEntry =
     }
 
 /** Pixels lifted off the layer by the select tool, waiting to be dropped somewhere. */
-export interface Floating extends Region {
+interface Floating extends Region {
   pixels: Uint8ClampedArray
   /** Finishes the undo step that began when the pixels were lifted or pasted. */
   done: () => void
@@ -59,6 +59,11 @@ interface StudioState extends DocLocation {
   doc: SpriteDoc | null
   version: number
   frame: number
+  /**
+   * Follows `version` once edits pause for a moment. Thumbnails and the colour list use
+   * it, so they don't redo their work for every pixel of a stroke.
+   */
+  settledVersion: number
   /** With shift-click, frames from here to `frame` are selected (for tagging and previewing). */
   rangeStart: number | null
   layerId: string
@@ -169,7 +174,7 @@ const sameBytes = (a: Uint8ClampedArray, b: Uint8ClampedArray): boolean =>
   a.length === b.length && a.every((v, i) => v === b[i])
 
 /** True when two snapshots match: layers, frame order and timing, and every pixel. */
-export const sameState = (a: DocState, b: DocState): boolean =>
+const sameState = (a: DocState, b: DocState): boolean =>
   a.width === b.width &&
   a.height === b.height &&
   JSON.stringify(a.tags) === JSON.stringify(b.tags) &&
@@ -238,6 +243,7 @@ export const useStudio = create<StudioState>((set, get) => {
     doc: null,
     version: 0,
     frame: 0,
+    settledVersion: 0,
     rangeStart: null,
     layerId: '',
     tool: 'pencil',
@@ -579,4 +585,14 @@ export const useStudio = create<StudioState>((set, get) => {
     toggleTileMode: () => set({ tileMode: !get().tileMode }),
     markSaved: (location) => set({ ...location, dirty: false })
   }
+})
+
+const SETTLE_MS = 200
+let settleTimer: ReturnType<typeof setTimeout> | undefined
+useStudio.subscribe((state, prev) => {
+  if (state.version === prev.version) return
+  clearTimeout(settleTimer)
+  // A new or reopened sprite shows its thumbnails straight away.
+  if (state.doc !== prev.doc) return useStudio.setState({ settledVersion: state.version })
+  settleTimer = setTimeout(() => useStudio.setState({ settledVersion: useStudio.getState().version }), SETTLE_MS)
 })

@@ -6,6 +6,7 @@ import { promises as fs, watch, type FSWatcher } from 'node:fs'
 import path from 'node:path'
 import { shell } from 'electron'
 import { countFrames } from '@shared/imageInfo'
+import { exists, writeFileAtomic } from './files'
 import {
   basenameRel,
   dirnameRel,
@@ -35,6 +36,7 @@ const INDEX_DIR = '.spritebuilder'
 const INDEX_FILE = 'library.json'
 const PALETTES_FILE = 'palettes.json'
 const MAX_FRAME_SCAN_BYTES = 50 * 1024 * 1024
+const OWN_CHANGE_GRACE_MS = 1000
 
 interface StoredMeta extends EditableMeta {
   addedAt: number
@@ -65,17 +67,19 @@ const isPalette = (p: unknown): p is SavedPalette =>
   Array.isArray((p as SavedPalette).colors) &&
   (p as SavedPalette).colors.every((c) => typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c))
 
-const exists = async (p: string): Promise<boolean> =>
-  fs.access(p).then(
-    () => true,
-    () => false
-  )
 
 export class Library {
   private index: IndexFile = { version: 1, items: {} }
   private snapshot: LibrarySnapshot
   private watcher: FSWatcher | null = null
   private rescanTimer: NodeJS.Timeout | null = null
+  /**
+   * The app rescans straight after its own changes, so the folder watcher only needs to
+   * rescan for changes made outside the app (in Finder, by other programs).
+   */
+  private ownChangeUntil = 0
+  private mutating = 0
+  private externalChange = false
   private queue: Promise<unknown> = Promise.resolve()
   private lastEmitted = ''
   /** Moves made since the last update, sent along with it. */
@@ -268,6 +272,20 @@ export class Library {
     })
   }
 
+  /** Adds and removes tags on many images at once, keeping each image's other tags. */
+  editTags(paths: string[], add: string[], remove: string[]): Promise<void> {
+    return this.serial(async () => {
+      const adding = add.map((t) => t.trim()).filter(Boolean)
+      const removing = new Set(remove.map((t) => t.trim()))
+      for (const rel of paths) {
+        const meta = this.index.items[rel]
+        if (meta) meta.tags = [...new Set([...meta.tags.filter((t) => !removing.has(t)), ...adding])]
+      }
+      await this.saveIndex()
+      this.refreshFromIndex()
+    })
+  }
+
   setComputedMeta(entries: ComputedMeta[]): Promise<void> {
     return this.serial(async () => {
       for (const e of entries) {
@@ -355,11 +373,8 @@ export class Library {
     })
   }
 
-  private async writePalettes(palettes: SavedPalette[]): Promise<void> {
-    const file = path.join(this.root, INDEX_DIR, PALETTES_FILE)
-    await fs.mkdir(path.dirname(file), { recursive: true })
-    await fs.writeFile(`${file}.tmp`, JSON.stringify({ version: 1, palettes }, null, 2), 'utf8')
-    await fs.rename(`${file}.tmp`, file)
+  private writePalettes(palettes: SavedPalette[]): Promise<void> {
+    return writeFileAtomic(path.join(this.root, INDEX_DIR, PALETTES_FILE), JSON.stringify({ version: 1, palettes }, null, 2))
   }
 
   // ---------- internals ----------
@@ -383,10 +398,14 @@ export class Library {
   /** Runs a change to the files on disk, then rescans so the UI sees the result. */
   private mutate<T>(task: () => Promise<T>): Promise<T> {
     return this.serial(async () => {
+      this.mutating++
       try {
         return await task()
       } finally {
         await this.scan()
+        this.mutating--
+        // The watcher reports our own changes a little after they happen.
+        this.ownChangeUntil = Date.now() + OWN_CHANGE_GRACE_MS
       }
     })
   }
@@ -432,12 +451,8 @@ export class Library {
     }
   }
 
-  private async saveIndex(): Promise<void> {
-    const file = path.join(this.root, INDEX_DIR, INDEX_FILE)
-    const tmp = `${file}.tmp`
-    await fs.mkdir(path.dirname(file), { recursive: true })
-    await fs.writeFile(tmp, JSON.stringify(this.index, null, 2), 'utf8')
-    await fs.rename(tmp, file)
+  private saveIndex(): Promise<void> {
+    return writeFileAtomic(path.join(this.root, INDEX_DIR, INDEX_FILE), JSON.stringify(this.index, null, 2))
   }
 
   private async scan(): Promise<void> {
@@ -566,8 +581,13 @@ export class Library {
       this.watcher = watch(this.root, { recursive: true }, (_event, filename) => {
         const name = filename?.toString() ?? ''
         if (name.split(path.sep).some((part) => part.startsWith('.'))) return
+        if (this.mutating === 0 && Date.now() > this.ownChangeUntil) this.externalChange = true
         if (this.rescanTimer) clearTimeout(this.rescanTimer)
-        this.rescanTimer = setTimeout(() => void this.serial(() => this.scan()), 300)
+        this.rescanTimer = setTimeout(() => {
+          if (!this.externalChange) return // only our own changes, already scanned
+          this.externalChange = false
+          void this.serial(() => this.scan())
+        }, 300)
       })
     } catch (err) {
       console.error('Could not watch the library folder:', err)

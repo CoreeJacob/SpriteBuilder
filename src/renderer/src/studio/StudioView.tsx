@@ -1,19 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Icon, type IconName } from '@/app/Icon'
-import { selectFolders, useApp } from '@/app/store'
+import { useApp } from '@/app/store'
 import { readPastedImage, writeSystemClipboard } from './clipboard'
-import { confirmDiscard, exportGif, exportPng, frameCanvas, saveSprite } from './io'
+import { confirmDiscard, exportGif, exportPng, saveSprite } from './io'
 import { CanvasSizeDialog } from './CanvasSizeDialog'
 import { LayersPanel } from './LayersPanel'
 import { PalettePanel } from './PalettePanel'
 import { useSavedPalettes } from './savedPalettes'
 import { SheetDialog } from './SheetDialog'
 import { Timeline } from './Timeline'
-import { compositeFrame, MAX_SIZE } from './model'
+import { compositeAt, MAX_SIZE } from './model'
 import { PALETTES } from './palettes'
 import { PixelCanvas } from './PixelCanvas'
-import { uniqueColors } from './raster'
+import { countColors, rankColors, toHex } from './raster'
 import { fitZoom, SHAPE_TOOLS, useStudio, ZOOM_LEVELS, type Tool } from './store'
+import { pixelsToCanvas, scaleCanvas } from '@/lib/canvas'
+import { isTyping } from '@/lib/dom'
 
 const TOOLS: Array<{ tool: Tool; icon: IconName; label: string; key: string; groupStart?: boolean }> = [
   { tool: 'pencil', icon: 'pencil', label: 'Pencil', key: 'B' },
@@ -28,11 +30,6 @@ const TOOLS: Array<{ tool: Tool; icon: IconName; label: string; key: string; gro
 
 const PRESETS = [8, 16, 32, 64, 128]
 const EXPORT_SCALES = [1, 2, 4, 8, 16]
-
-const isTyping = (): boolean => {
-  const el = document.activeElement
-  return el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement
-}
 
 const isPowerOfTwo = (n: number): boolean => (n & (n - 1)) === 0
 
@@ -192,7 +189,6 @@ function StudioBar({ onNew, onSheet, onSize }: { onNew: () => void; onSheet: () 
   const mirrorY = useStudio((s) => s.mirrorY)
   const canUndo = useStudio((s) => s.canUndo)
   const canRedo = useStudio((s) => s.canRedo)
-  const folders = useApp(selectFolders)
   const s = useStudio.getState()
 
   return (
@@ -220,21 +216,13 @@ function StudioBar({ onNew, onSheet, onSize }: { onNew: () => void; onSheet: () 
           {name}
           {dirty && <i className="dot" title="Unsaved changes" />}
         </span>
-        <span className="muted small">in</span>
-        <select
-          className="select small"
-          value={folder}
-          disabled={savedPath !== null}
-          title={savedPath ? 'Use Save As… to save into another folder' : 'Folder to save into'}
-          onChange={(e) => useStudio.setState({ folder: e.target.value })}
+        <span
+          className="muted small"
+          title={savedPath ? `Saved as ${savedPath}` : 'Not saved yet · Save asks where to put it'}
         >
-          <option value="">Library</option>
-          {folders.map((f) => (
-            <option key={f} value={f}>
-              {f}
-            </option>
-          ))}
-        </select>
+          in {folder || 'Library'}
+          {!savedPath && ' · not saved yet'}
+        </span>
       </div>
 
       <div className="spacer" />
@@ -405,11 +393,14 @@ function SidePanel({ hover }: { hover: [number, number] | null }) {
   const shown = playing ? Math.min(tick, doc.frames.length - 1) : frame
 
   // Colours across every frame, so the palette view covers the whole animation.
+  const settledVersion = useStudio((s) => s.settledVersion)
   const used = useMemo(() => {
-    const all = new Uint8ClampedArray(doc.width * doc.height * 4 * doc.frames.length)
-    doc.frames.forEach((_, i) => all.set(compositeFrame(doc, i), i * doc.width * doc.height * 4))
-    return uniqueColors(all)
-  }, [doc, version])
+    const counts = new Map<number, number>()
+    doc.frames.forEach((_, i) => {
+      for (const [key, n] of countColors(compositeAt(doc, i, settledVersion))) counts.set(key, (counts.get(key) ?? 0) + n)
+    })
+    return rankColors(counts).map(({ color }) => toHex(color))
+  }, [doc, settledVersion])
 
   // Live preview at a whole-number scale that fits the panel.
   useEffect(() => {
@@ -417,19 +408,14 @@ function SidePanel({ hover }: { hover: [number, number] | null }) {
     if (!canvas) return
     const repeat = tiled ? 3 : 1
     const scale = Math.max(1, Math.floor(200 / (Math.max(doc.width, doc.height) * repeat)))
-    const image = frameCanvas(doc, shown, scale)
+    // Shares the canvas's composite of this frame rather than blending the layers again.
+    const image = scaleCanvas(pixelsToCanvas(compositeAt(doc, shown, version), doc.width, doc.height), scale)
     canvas.width = image.width * repeat
     canvas.height = image.height * repeat
     const ctx = canvas.getContext('2d')!
     ctx.imageSmoothingEnabled = false
     // Pixels being moved by the select tool aren't on the layer yet; draw them on top.
-    let lifted: HTMLCanvasElement | null = null
-    if (floating && shown === frame) {
-      lifted = document.createElement('canvas')
-      lifted.width = floating.w
-      lifted.height = floating.h
-      lifted.getContext('2d')!.putImageData(new ImageData(floating.pixels.slice() as Uint8ClampedArray<ArrayBuffer>, floating.w, floating.h), 0, 0)
-    }
+    const lifted = floating && shown === frame ? pixelsToCanvas(floating.pixels, floating.w, floating.h) : null
     for (let y = 0; y < repeat; y++) {
       for (let x = 0; x < repeat; x++) {
         const ox = x * image.width

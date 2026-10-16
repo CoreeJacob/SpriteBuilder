@@ -3,7 +3,7 @@
 import { joinRel, stripExt } from '@shared/paths'
 import type { LibraryItem } from '@shared/types'
 
-export type SaveDecision =
+type SaveDecision =
   /** Nothing there yet: make a new file. */
   | { kind: 'new'; path: string }
   /** The same file that's open: just save over it. */

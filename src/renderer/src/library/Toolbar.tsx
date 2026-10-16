@@ -14,7 +14,7 @@ import {
 const TYPES = ['png', 'gif', 'jpg', 'webp', 'svg', 'bmp']
 const DIMENSIONS = [8, 16, 32, 64, 128, 256]
 
-export const SORT_LABELS: Record<SortKey, string> = {
+const SORT_LABELS: Record<SortKey, string> = {
   name: 'Name',
   addedAt: 'Date added',
   modifiedAt: 'Date modified',

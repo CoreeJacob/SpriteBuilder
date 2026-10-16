@@ -3,7 +3,9 @@
 
 import { useEffect } from 'react'
 import type { ComputedMeta, LibraryItem } from '@shared/types'
-import { itemUrl, loadImage } from '@/lib/fileUrl'
+import { loadImage, readPixels } from '@/lib/canvas'
+import { itemUrl } from '@/lib/fileUrl'
+import { countColors } from '@/studio/raster'
 
 const MAX_COUNT_PIXELS = 512 * 512
 const BATCH = 16
@@ -16,18 +18,7 @@ async function measure(item: LibraryItem): Promise<ComputedMeta> {
     const height = img.naturalHeight
     let colorCount: number | null = null
     if (item.ext !== 'svg' && width && height && width * height <= MAX_COUNT_PIXELS) {
-      const canvas = document.createElement('canvas')
-      canvas.width = width
-      canvas.height = height
-      const ctx = canvas.getContext('2d', { willReadFrequently: true })!
-      ctx.drawImage(img, 0, 0)
-      const data = ctx.getImageData(0, 0, width, height).data
-      const seen = new Set<number>()
-      for (let i = 0; i < data.length; i += 4) {
-        if (data[i + 3] === 0) continue
-        seen.add(((data[i] << 24) | (data[i + 1] << 16) | (data[i + 2] << 8) | data[i + 3]) >>> 0)
-      }
-      colorCount = seen.size
+      colorCount = countColors(readPixels(img, width, height)).size
     }
     return { path: item.path, width, height, colorCount }
   } catch {

@@ -14,6 +14,7 @@ import {
   type SaveSpriteRequest
 } from '@shared/types'
 import { createBackup, restoreBackup } from './backup'
+import { exists } from './files'
 import { Library } from './library'
 import { Recovery } from './recovery'
 
@@ -212,7 +213,7 @@ function registerIpc(): void {
     // Always restore into a brand-new folder named after the backup.
     const base = path.basename(zipPath, path.extname(zipPath))
     let folder = path.join(where.filePaths[0], base)
-    for (let n = 2; await fs.access(folder).then(() => true, () => false); n++) folder = path.join(where.filePaths[0], `${base} ${n}`)
+    for (let n = 2; await exists(folder); n++) folder = path.join(where.filePaths[0], `${base} ${n}`)
     const restored = await restoreBackup(new Uint8Array(await fs.readFile(zipPath)), folder)
     const opened = await openLibrary(folder)
     await saveSettings({ ...(await loadSettings()), libraryRoot: opened.root })
@@ -253,6 +254,7 @@ function registerIpc(): void {
   handle('items:duplicate', (p: string) => lib().duplicateItem(p))
   handle('items:delete', (paths: string[]) => lib().deleteItems(paths))
   handle('items:updateMeta', (paths: string[], patch: Partial<EditableMeta>) => lib().updateMeta(paths, patch))
+  handle('items:editTags', (paths: string[], add: string[], remove: string[]) => lib().editTags(paths, add, remove))
   handle('items:setComputed', (entries: ComputedMeta[]) => lib().setComputedMeta(entries))
   handle('items:replace', (p: string, data: Uint8Array) => lib().replaceItem(p, data))
   handle('items:reveal', (p: string) => shell.showItemInFolder(lib().abs(p)))

@@ -9,7 +9,7 @@ import type { Scope } from './filter'
 export const ITEM_DRAG_TYPE = 'application/x-spritebuilder-items'
 
 /** Handlers that let a sidebar entry accept library items dragged onto it. */
-export const FOLDER_DRAG_TYPE = 'application/x-spritebuilder-folder'
+const FOLDER_DRAG_TYPE = 'application/x-spritebuilder-folder'
 
 /** The folder being dragged. Drag data can't be read during dragover, so it's kept here too. */
 let draggedFolder: string | null = null

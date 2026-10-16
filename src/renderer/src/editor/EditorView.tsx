@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Icon, type IconName } from '@/app/Icon'
 import { useApp } from '@/app/store'
 import { Thumb } from '@/library/ItemViews'
-import { parseHex, toHex } from '@/studio/raster'
+import { countColors, parseHex, toHex } from '@/studio/raster'
 import {
   commitAdjustments,
   confirmDiscard,
@@ -36,13 +36,9 @@ import {
   type Img
 } from './ops'
 import { MAX_EDIT_SIZE, useEditor } from './store'
+import { isTyping } from '@/lib/dom'
 
 const ZOOMS = [0.25, 0.5, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32]
-
-const isTyping = (): boolean => {
-  const el = document.activeElement
-  return el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement
-}
 
 export function EditorView() {
   const image = useEditor((s) => s.image)
@@ -415,8 +411,9 @@ function ColourSection() {
   const [target, setTarget] = useState('#ffffff')
   const [reduceTo, setReduceTo] = useState(16)
 
+  const counts = useMemo(() => countColors(image.data), [image])
   const colours = useMemo(() => colorCounts(image, 256), [image])
-  const total = useMemo(() => (colours.length < 256 ? colours.length : colorCounts(image, Infinity).length), [image, colours])
+  const total = counts.size
   const pickedHex = picked ? toHex(picked) : null
 
   return (

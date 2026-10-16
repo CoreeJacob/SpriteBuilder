@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compositeFrame, createDoc, docFromFrames, parseDoc, serializeDoc } from './model'
+import { compositeAt, compositeFrame, createDoc, docFromFrames, parseDoc, serializeDoc } from './model'
 
 describe('sprite file format', () => {
   it('round-trips a document', () => {
@@ -42,5 +42,17 @@ describe('docFromFrames', () => {
     expect(doc.palette.colors.sort()).toEqual(['#0000ff', '#ff0000'])
     red[0] = 1
     expect(doc.frames[0].cels[doc.layers[0].id][0]).toBe(255) // copied, not shared
+  })
+})
+
+describe('compositeAt', () => {
+  it('reuses one result per frame until the version changes', () => {
+    const doc = createDoc(1, 1)
+    const first = compositeAt(doc, 0, 1)
+    expect(compositeAt(doc, 0, 1)).toBe(first) // same version: shared, not recomputed
+    doc.frames[0].cels[doc.layers[0].id].set([9, 9, 9, 255])
+    const next = compositeAt(doc, 0, 2)
+    expect(next).not.toBe(first)
+    expect(Array.from(next)).toEqual([9, 9, 9, 255])
   })
 })

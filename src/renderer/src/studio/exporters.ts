@@ -2,21 +2,11 @@
 
 import { applyPalette, GIFEncoder, quantize, type Palette } from 'gifenc'
 import { compositeFrame, type SpriteDoc } from './model'
-import { blitRegion, type Region } from './raster'
+import { blitRegion, resizePixels, type Region } from './raster'
 
-/** Nearest-neighbour upscale, so pixels stay hard-edged. */
-export function scalePixels(px: Uint8ClampedArray, w: number, h: number, scale: number): Uint8ClampedArray<ArrayBuffer> {
-  const out = new Uint8ClampedArray(w * scale * h * scale * 4)
-  const outW = w * scale
-  for (let y = 0; y < h * scale; y++) {
-    const sy = Math.floor(y / scale)
-    for (let x = 0; x < outW; x++) {
-      const si = (sy * w + Math.floor(x / scale)) * 4
-      out.set(px.subarray(si, si + 4), (y * outW + x) * 4)
-    }
-  }
-  return out
-}
+/** Whole-number upscale with hard pixel edges. */
+export const scalePixels = (px: Uint8ClampedArray, w: number, h: number, scale: number): Uint8ClampedArray<ArrayBuffer> =>
+  resizePixels(px, w, h, w * scale, h * scale)
 
 // ---------- GIF ----------
 
@@ -94,7 +84,7 @@ export interface SheetOptions {
   scale: number
 }
 
-export interface SheetPlan {
+interface SheetPlan {
   width: number
   height: number
   columns: number

@@ -9,11 +9,7 @@ import { allTags as collectTags, countActiveFilters, groupByFolder, inScope, vis
 import { FolderSidebar } from './FolderSidebar'
 import { ItemGrid, ItemList } from './ItemViews'
 import { Toolbar } from './Toolbar'
-
-const isTyping = (): boolean => {
-  const el = document.activeElement
-  return el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement
-}
+import { isTyping } from '@/lib/dom'
 
 const MIME_EXT: Record<string, string> = {
   'image/png': 'png',

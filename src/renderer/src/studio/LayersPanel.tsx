@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from '@/app/Icon'
+import { drawPixels } from '@/lib/canvas'
 import type { SpriteDoc } from './model'
 import { useStudio } from './store'
 
@@ -168,15 +169,13 @@ export function LayersPanel() {
 
 function LayerThumb({ doc, layerId }: { doc: SpriteDoc; layerId: string }) {
   const ref = useRef<HTMLCanvasElement>(null)
-  const version = useStudio((s) => s.version)
+  const version = useStudio((s) => s.settledVersion)
   const frame = useStudio((s) => s.frame)
   useEffect(() => {
     const cel = doc.frames[frame]?.cels[layerId]
     const canvas = ref.current
     if (!cel || !canvas) return
-    canvas.width = doc.width
-    canvas.height = doc.height
-    canvas.getContext('2d')!.putImageData(new ImageData(cel.slice() as Uint8ClampedArray<ArrayBuffer>, doc.width, doc.height), 0, 0)
+    drawPixels(canvas, cel, doc.width, doc.height)
   }, [doc, layerId, version, frame])
   return <canvas ref={ref} className="layer-thumb checker" />
 }

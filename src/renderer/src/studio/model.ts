@@ -37,7 +37,7 @@ export interface SpriteDoc {
   tags: FrameTag[]
 }
 
-export const FILE_FORMAT = 'spritebuilder-sprite'
+const FILE_FORMAT = 'spritebuilder-sprite'
 export const MAX_SIZE = 512
 
 export const newId = (): string => Math.random().toString(36).slice(2, 10)
@@ -52,15 +52,6 @@ export function createDoc(width: number, height: number, palette: Palette = DEFA
     frames: [{ id: newId(), duration: 100, cels: { [layer.id]: new Uint8ClampedArray(width * height * 4) } }],
     tags: []
   }
-}
-
-/** A one-layer document from existing pixels, with a palette of the colours it uses. */
-export function docFromPixels(width: number, height: number, pixels: Uint8ClampedArray): SpriteDoc {
-  const doc = createDoc(width, height)
-  doc.frames[0].cels[doc.layers[0].id].set(pixels)
-  const colors = uniqueColors(pixels, 64)
-  if (colors.length) doc.palette = { name: 'Image colours', colors }
-  return doc
 }
 
 /** A one-layer animation from a list of frames, with a palette of the colours they use. */
@@ -88,6 +79,24 @@ export function compositeFrame(doc: SpriteDoc, frameIndex = 0): Uint8ClampedArra
     if (layer.visible && cel) blendOver(out, cel, layer.opacity)
   }
   return out
+}
+
+const composites = new WeakMap<SpriteDoc, Map<string, { version: number; pixels: Uint8ClampedArray<ArrayBuffer> }>>()
+
+/**
+ * `compositeFrame`, remembered for each frame until `version` changes, so the canvas,
+ * preview and thumbnails share one result instead of each blending the layers again.
+ * The returned pixels are shared: read them, don't change them.
+ */
+export function compositeAt(doc: SpriteDoc, frameIndex: number, version: number): Uint8ClampedArray<ArrayBuffer> {
+  const frame = doc.frames[frameIndex]
+  let cache = composites.get(doc)
+  if (!cache) composites.set(doc, (cache = new Map()))
+  const hit = cache.get(frame.id)
+  if (hit && hit.version === version && hit.pixels.length === doc.width * doc.height * 4) return hit.pixels
+  const pixels = compositeFrame(doc, frameIndex)
+  cache.set(frame.id, { version, pixels })
+  return pixels
 }
 
 function toBase64(bytes: Uint8ClampedArray): string {

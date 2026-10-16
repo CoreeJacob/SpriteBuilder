@@ -65,7 +65,7 @@ export const ADDED_WITHIN: Record<Exclude<AddedWithin, 'any'>, { label: string; 
 }
 
 /** jpg and jpeg are one type as far as the user is concerned. */
-export const normalizeType = (ext: string): string => (ext === 'jpeg' ? 'jpg' : ext)
+const normalizeType = (ext: string): string => (ext === 'jpeg' ? 'jpg' : ext)
 
 export function countActiveFilters(f: LibraryFilters): number {
   return (
@@ -91,7 +91,7 @@ export function inScope(item: LibraryItem, scope: Scope, includeSubfolders: bool
   }
 }
 
-export function matchesFilters(item: LibraryItem, f: LibraryFilters, now: number): boolean {
+function matchesFilters(item: LibraryItem, f: LibraryFilters, now: number): boolean {
   const query = f.search.trim().toLowerCase()
   if (query) {
     const haystack = [item.name, item.folder, item.notes, ...item.tags].join(' ').toLowerCase()
@@ -138,7 +138,7 @@ function compare(a: LibraryItem, b: LibraryItem, key: SortKey): number {
   }
 }
 
-export function sortItems(items: LibraryItem[], order: SortOrder): LibraryItem[] {
+function sortItems(items: LibraryItem[], order: SortOrder): LibraryItem[] {
   const sign = order.dir === 'asc' ? 1 : -1
   // Ties fall back to name so the order is stable and predictable.
   return [...items].sort((a, b) => sign * compare(a, b, order.key) || collator.compare(a.name, b.name))

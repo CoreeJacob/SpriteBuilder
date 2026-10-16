@@ -1,21 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { attempt, useApp } from '@/app/store'
+import { drawPixels, pixelsToPng } from '@/lib/canvas'
 import { planSheet, renderSheet, sheetJson, type SheetLayout, type SheetOptions } from './exporters'
 import { useStudio } from './store'
 
 const SCALES = [1, 2, 4, 8]
 const PREVIEW_W = 440
 const PREVIEW_H = 220
-
-async function toPng(pixels: Uint8ClampedArray<ArrayBuffer>, w: number, h: number): Promise<Uint8Array> {
-  const canvas = document.createElement('canvas')
-  canvas.width = w
-  canvas.height = h
-  canvas.getContext('2d')!.putImageData(new ImageData(pixels, w, h), 0, 0)
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
-  if (!blob) throw new Error('Could not encode the sprite sheet')
-  return new Uint8Array(await blob.arrayBuffer())
-}
 
 export function SheetDialog({ onClose }: { onClose: () => void }) {
   const doc = useStudio((s) => s.doc)!
@@ -34,9 +25,7 @@ export function SheetDialog({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     const canvas = previewRef.current
     if (!canvas) return
-    canvas.width = plan.width
-    canvas.height = plan.height
-    canvas.getContext('2d')!.putImageData(new ImageData(pixels, plan.width, plan.height), 0, 0)
+    drawPixels(canvas, pixels, plan.width, plan.height)
     // Show it as big as fits, in whole-pixel steps so it stays sharp.
     const fit = Math.min(PREVIEW_W / plan.width, PREVIEW_H / plan.height)
     const zoom = fit >= 1 ? Math.floor(fit) : fit
@@ -47,7 +36,7 @@ export function SheetDialog({ onClose }: { onClose: () => void }) {
   const save = async (target: 'file' | 'library'): Promise<void> => {
     setBusy(true)
     try {
-      const png = await toPng(pixels, plan.width, plan.height)
+      const png = await pixelsToPng(pixels, plan.width, plan.height)
       const json = (file: string): string | null => (withJson ? sheetJson(doc, plan, name, file, options.scale) : null)
       const saved =
         target === 'file'

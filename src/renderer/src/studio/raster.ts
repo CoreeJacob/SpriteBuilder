@@ -85,41 +85,75 @@ export function floodFill(
       ? buf[i + 3] === 0
       : buf[i] === target[0] && buf[i + 1] === target[1] && buf[i + 2] === target[2] && buf[i + 3] === target[3]
   if (target.every((v, k) => v === color[k]) || (target[3] === 0 && color[3] === 0)) return 0
+  const region = floodRegion(width, height, [x, y], (p) => same(p * 4))
+  for (const p of region) buf.set(color, p * 4)
+  return region.length
+}
 
+/**
+ * Every pixel reachable (4-way) from the seed points (x, y pairs) through pixels for
+ * which `include` is true. Returns pixel indexes (y × width + x). This is the engine
+ * behind the paint bucket, the magic eraser and background removal.
+ */
+export function floodRegion(width: number, height: number, seeds: number[], include: (p: number) => boolean): number[] {
   const visited = new Uint8Array(width * height)
-  const stack = [x, y]
-  let changed = 0
+  const region: number[] = []
+  const stack = [...seeds]
   while (stack.length) {
     const py = stack.pop()!
     const px = stack.pop()!
+    if (px < 0 || py < 0 || px >= width || py >= height) continue
     const p = py * width + px
     if (visited[p]) continue
     visited[p] = 1
-    const i = p * 4
-    if (!same(i)) continue
-    buf.set(color, i)
-    changed++
-    if (px > 0) stack.push(px - 1, py)
-    if (px < width - 1) stack.push(px + 1, py)
-    if (py > 0) stack.push(px, py - 1)
-    if (py < height - 1) stack.push(px, py + 1)
+    if (!include(p)) continue
+    region.push(p)
+    stack.push(px - 1, py, px + 1, py, px, py - 1, px, py + 1)
   }
-  return changed
+  return region
 }
 
-/** Distinct visible colours, most used first. */
-export function uniqueColors(buf: Uint8ClampedArray, limit = Infinity): string[] {
+/** Pixel-perfect resize: every output pixel copies the nearest input pixel. */
+export function resizePixels(src: Uint8ClampedArray, sw: number, sh: number, dw: number, dh: number): Uint8ClampedArray<ArrayBuffer> {
+  const out = new Uint8ClampedArray(dw * dh * 4)
+  for (let y = 0; y < dh; y++) {
+    const sy = Math.min(sh - 1, Math.floor(((y + 0.5) * sh) / dh))
+    for (let x = 0; x < dw; x++) {
+      const sx = Math.min(sw - 1, Math.floor(((x + 0.5) * sw) / dw))
+      const si = (sy * sw + sx) * 4
+      out.set(src.subarray(si, si + 4), (y * dw + x) * 4)
+    }
+  }
+  return out
+}
+
+/** How many pixels use each visible colour, keyed by the colour packed into one number. */
+export function countColors(buf: Uint8ClampedArray): Map<number, number> {
   const counts = new Map<number, number>()
   for (let i = 0; i < buf.length; i += 4) {
     if (buf[i + 3] === 0) continue
     const key = ((buf[i] << 24) | (buf[i + 1] << 16) | (buf[i + 2] << 8) | buf[i + 3]) >>> 0
     counts.set(key, (counts.get(key) ?? 0) + 1)
   }
-  return [...counts.entries()]
+  return counts
+}
+
+const unpack = (key: number): RGBA => [key >>> 24, (key >>> 16) & 255, (key >>> 8) & 255, key & 255]
+
+/** Colour counts (from `countColors`) as a list, most used first. */
+export const rankColors = (counts: Map<number, number>, limit = Infinity): Array<{ color: RGBA; count: number }> =>
+  [...counts.entries()]
     .sort((a, b) => b[1] - a[1])
     .slice(0, limit)
-    .map(([key]) => toHex([key >>> 24, (key >>> 16) & 255, (key >>> 8) & 255, key & 255]))
-}
+    .map(([key, count]) => ({ color: unpack(key), count }))
+
+/** Visible colours with how often each appears, most used first. */
+export const colorsByUse = (buf: Uint8ClampedArray, limit = Infinity): Array<{ color: RGBA; count: number }> =>
+  rankColors(countColors(buf), limit)
+
+/** Distinct visible colours as hex, most used first. */
+export const uniqueColors = (buf: Uint8ClampedArray, limit = Infinity): string[] =>
+  colorsByUse(buf, limit).map(({ color }) => toHex(color))
 
 // ---------- shapes ----------
 

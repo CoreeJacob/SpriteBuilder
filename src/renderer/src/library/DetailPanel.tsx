@@ -290,18 +290,9 @@ function BulkPanel({ items, allTags, folders }: { items: LibraryItem[]; allTags:
   const allFavorite = items.every((i) => i.favorite)
   const shared = allTags.filter((t) => items.every((i) => i.tags.includes(t)))
 
-  const addTag = (tag: string): void => {
-    void attempt(async () => {
-      for (const item of items) {
-        if (!item.tags.includes(tag)) await window.api.updateMeta([item.path], { tags: [...item.tags, tag] })
-      }
-    })
-  }
-  const removeTag = (tag: string): void => {
-    void attempt(async () => {
-      for (const item of items) await window.api.updateMeta([item.path], { tags: item.tags.filter((t) => t !== tag) })
-    })
-  }
+  // One request for the whole selection, however many images are in it.
+  const addTag = (tag: string): void => void attempt(() => window.api.editTags(paths, [tag], []))
+  const removeTag = (tag: string): void => void attempt(() => window.api.editTags(paths, [], [tag]))
 
   return (
     <aside className="detail">

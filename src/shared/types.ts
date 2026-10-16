@@ -95,6 +95,8 @@ export interface SpriteBuilderApi {
   /** Overwrites a library image with new bytes (the Image Editor's Save). */
   replaceItem(path: string, data: Uint8Array): Promise<string>
   updateMeta(paths: string[], patch: Partial<EditableMeta>): Promise<void>
+  /** Adds and removes tags on several images in one go. */
+  editTags(paths: string[], add: string[], remove: string[]): Promise<void>
   setComputedMeta(entries: ComputedMeta[]): Promise<void>
   revealItem(path: string): Promise<void>
   exportItem(path: string): Promise<string | null>

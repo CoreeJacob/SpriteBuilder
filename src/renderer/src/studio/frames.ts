@@ -2,7 +2,7 @@
 
 import { newId, type Frame, type FrameTag, type SpriteDoc } from './model'
 
-export const DEFAULT_DURATION = 100 // ms, i.e. 10 FPS
+const DEFAULT_DURATION = 100 // ms, i.e. 10 FPS
 
 const emptyCels = (doc: SpriteDoc): Frame['cels'] =>
   Object.fromEntries(doc.layers.map((l) => [l.id, new Uint8ClampedArray(doc.width * doc.height * 4)]))
@@ -63,7 +63,7 @@ export function setFps(doc: SpriteDoc, fps: number): void {
   for (const f of doc.frames) f.duration = ms
 }
 
-export const clampDuration = (ms: number): number => Math.round(Math.max(10, Math.min(10000, ms || DEFAULT_DURATION)))
+const clampDuration = (ms: number): number => Math.round(Math.max(10, Math.min(10000, ms || DEFAULT_DURATION)))
 
 /** The FPS if every frame shares one duration, otherwise null. */
 export function sharedFps(doc: SpriteDoc): number | null {
@@ -73,7 +73,7 @@ export function sharedFps(doc: SpriteDoc): number | null {
 
 // ---------- tags (named animations) ----------
 
-export const TAG_COLORS = ['#6c8cff', '#ff7a59', '#4fd18b', '#f5c542', '#c77dff', '#ff5d8f', '#3ec7d6']
+const TAG_COLORS = ['#6c8cff', '#ff7a59', '#4fd18b', '#f5c542', '#c77dff', '#ff5d8f', '#3ec7d6']
 
 /** Names a run of frames. If it overlaps tags, they are kept; engines allow that. */
 export function addTag(doc: SpriteDoc, from: number, to: number, name: string): FrameTag {

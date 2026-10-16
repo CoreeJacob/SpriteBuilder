@@ -5,7 +5,7 @@ import { create } from 'zustand'
 import type { RGBA } from '@/studio/raster'
 import { NO_ADJUSTMENTS, type Adjustments, type Img, type Rect, type SliceOptions } from './ops'
 
-export type EditorMode = 'none' | 'crop' | 'pick' | 'wand' | 'slice'
+type EditorMode = 'none' | 'crop' | 'pick' | 'wand' | 'slice'
 
 /** The library file being edited. */
 export interface EditorSource {
@@ -23,7 +23,7 @@ const HISTORY_BYTES = 384 * 1024 * 1024
 /** Formats Save can write back to faithfully. Others are saved as a PNG copy. */
 const REWRITABLE = ['png', 'jpg', 'jpeg', 'webp']
 
-export const DEFAULT_SLICE: SliceOptions = {
+const DEFAULT_SLICE: SliceOptions = {
   mode: 'size',
   cellW: 16,
   cellH: 16,

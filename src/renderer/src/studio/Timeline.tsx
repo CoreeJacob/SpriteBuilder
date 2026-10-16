@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from '@/app/Icon'
 import { useApp } from '@/app/store'
+import { drawPixels } from '@/lib/canvas'
 import { sharedFps } from './frames'
-import { compositeFrame, type SpriteDoc } from './model'
+import { compositeAt, type SpriteDoc } from './model'
 import { useStudio } from './store'
 
 const FRAME_DRAG_TYPE = 'application/x-spritebuilder-frame'
@@ -201,13 +202,11 @@ export function Timeline() {
 
 function FrameThumb({ doc, index }: { doc: SpriteDoc; index: number }) {
   const ref = useRef<HTMLCanvasElement>(null)
-  const version = useStudio((s) => s.version)
+  const version = useStudio((s) => s.settledVersion)
   useEffect(() => {
     const canvas = ref.current
     if (!canvas || !doc.frames[index]) return
-    canvas.width = doc.width
-    canvas.height = doc.height
-    canvas.getContext('2d')!.putImageData(new ImageData(compositeFrame(doc, index), doc.width, doc.height), 0, 0)
+    drawPixels(canvas, compositeAt(doc, index, version), doc.width, doc.height)
   }, [doc, index, version])
   return <canvas ref={ref} className="frame-thumb checker" />
 }

@@ -9,7 +9,7 @@ const SKIP = new Set(['.DS_Store'])
 /** Already-compressed formats are stored as they are; zipping them again only costs time. */
 const STORED = /\.(png|jpe?g|gif|webp)$/i
 
-export interface BackupResult {
+interface BackupResult {
   files: number
   bytes: number
 }

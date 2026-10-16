@@ -8,15 +8,15 @@ import { DEFAULT_FILTERS, type LibraryFilters, type Scope, type SortOrder } from
 
 export type View = 'library' | 'editor' | 'studio'
 export type Theme = 'system' | 'dark' | 'light'
-export type LayoutMode = 'grid' | 'list'
+type LayoutMode = 'grid' | 'list'
 
-export interface Toast {
+interface Toast {
   id: number
   message: string
   kind: 'info' | 'error'
 }
 
-export interface PromptRequest {
+interface PromptRequest {
   title: string
   label?: string
   value: string
@@ -26,7 +26,7 @@ export interface PromptRequest {
   resolve: (value: string | null, folder: string) => void
 }
 
-export interface NameAndFolder {
+interface NameAndFolder {
   name: string
   folder: string
 }
@@ -77,7 +77,7 @@ interface AppState {
  * Use this instead of `?? []` inside a store selector: a new empty array on every call
  * looks like a change, which makes React re-render forever.
  */
-export const NO_FOLDERS: string[] = []
+const NO_FOLDERS: string[] = []
 export const selectFolders = (s: { library: LibrarySnapshot | null }): string[] => s.library?.folders ?? NO_FOLDERS
 
 const PREFS_KEY = 'spritebuilder.prefs'

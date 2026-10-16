@@ -6,19 +6,15 @@ import type { LibraryItem } from '@shared/types'
 import { ContextMenu, type MenuEntry, type MenuRequest } from '@/app/ContextMenu'
 import { attempt, useApp } from '@/app/store'
 import { openInEditor } from '@/editor/io'
-import { itemUrl, loadImage } from '@/lib/fileUrl'
+import { canvasToBlob, imageToCanvas, loadImage } from '@/lib/canvas'
+import { itemUrl } from '@/lib/fileUrl'
 import { openInStudio } from '@/studio/io'
 import { confirmDelete } from './DetailPanel'
 
 /** Puts an image on the Mac clipboard as a PNG, ready to paste into other apps. */
 async function copyImage(item: LibraryItem): Promise<void> {
   const img = await loadImage(itemUrl(item))
-  const canvas = document.createElement('canvas')
-  canvas.width = img.naturalWidth
-  canvas.height = img.naturalHeight
-  canvas.getContext('2d')!.drawImage(img, 0, 0)
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
-  if (!blob) throw new Error('Could not copy the image')
+  const blob = await canvasToBlob(imageToCanvas(img, img.naturalWidth, img.naturalHeight))
   await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
   useApp.getState().notify(`Copied ${item.name}`)
 }

@@ -2,7 +2,7 @@
 // never changed, which keeps undo simple.
 
 import { applyPalette, quantize } from 'gifenc'
-import type { RGBA } from '@/studio/raster'
+import { colorsByUse, floodRegion, resizePixels, type RGBA } from '@/studio/raster'
 
 export interface Img {
   width: number
@@ -16,7 +16,7 @@ export const blank = (width: number, height: number): Img => ({
   data: new Uint8ClampedArray(width * height * 4)
 })
 
-export const copyImg = (img: Img): Img => ({ ...img, data: img.data.slice() })
+const copyImg = (img: Img): Img => ({ ...img, data: img.data.slice() })
 
 // ---------- transform ----------
 
@@ -91,12 +91,11 @@ export const flipH = (img: Img): Img => remap(img, img.width, img.height, (x, y)
 export const flipV = (img: Img): Img => remap(img, img.width, img.height, (x, y) => [x, img.height - 1 - y])
 
 /** Pixel-perfect resize: each output pixel copies the nearest input pixel. */
-export function resizeNearest(img: Img, width: number, height: number): Img {
-  return remap(img, width, height, (x, y) => [
-    Math.min(img.width - 1, Math.floor(((x + 0.5) * img.width) / width)),
-    Math.min(img.height - 1, Math.floor(((y + 0.5) * img.height) / height))
-  ])
-}
+export const resizeNearest = (img: Img, width: number, height: number): Img => ({
+  width,
+  height,
+  data: resizePixels(img.data, img.width, img.height, width, height)
+})
 
 // ---------- adjustments ----------
 
@@ -205,20 +204,8 @@ export function makeTransparent(img: Img, color: RGBA, tolerance: number, at?: {
 /** Clears every matching pixel connected to any of the seed points (x, y pairs). */
 function floodClear(img: Img, color: RGBA, tolerance: number, seeds: number[]): Img {
   const out = copyImg(img)
-  const { width: w, height: h } = img
-  const visited = new Uint8Array(w * h)
-  const stack = [...seeds]
-  while (stack.length) {
-    const y = stack.pop()!
-    const x = stack.pop()!
-    if (x < 0 || y < 0 || x >= w || y >= h) continue
-    const p = y * w + x
-    if (visited[p]) continue
-    visited[p] = 1
-    if (out.data[p * 4 + 3] === 0 || !matches(img.data, p * 4, color, tolerance)) continue
-    out.data.fill(0, p * 4, p * 4 + 4)
-    stack.push(x + 1, y, x - 1, y, x, y + 1, x, y - 1)
-  }
+  const region = floodRegion(img.width, img.height, seeds, (p) => img.data[p * 4 + 3] !== 0 && matches(img.data, p * 4, color, tolerance))
+  for (const p of region) out.data.fill(0, p * 4, p * 4 + 4)
   return out
 }
 
@@ -309,17 +296,4 @@ export function pixelAt(img: Img, x: number, y: number): RGBA {
 }
 
 /** Distinct visible colours with how often each appears, most used first. */
-export function colorCounts(img: Img, limit = 256): Array<{ color: RGBA; count: number }> {
-  const counts = new Map<number, number>()
-  for (let i = 0; i < img.data.length; i += 4) {
-    if (img.data[i + 3] === 0) continue
-    const key = ((img.data[i] << 24) | (img.data[i + 1] << 16) | (img.data[i + 2] << 8) | img.data[i + 3]) >>> 0
-    counts.set(key, (counts.get(key) ?? 0) + 1)
-  }
-  return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, limit)
-    .map(([k, count]) => ({ color: [k >>> 24, (k >>> 16) & 255, (k >>> 8) & 255, k & 255] as RGBA, count }))
-}
-
-export const distinctColorCount = (img: Img): number => colorCounts(img, Infinity).length
+export const colorCounts = (img: Img, limit = 256): Array<{ color: RGBA; count: number }> => colorsByUse(img.data, limit)

@@ -15,17 +15,13 @@ import { RecoveryDialog } from './RecoveryDialog'
 import { ShortcutsDialog } from './ShortcutsDialog'
 import { Tooltips } from './Tooltips'
 import { useApp, type Theme, type View } from './store'
+import { isTyping } from '@/lib/dom'
 
 const NAV: Array<{ view: View; label: string; icon: IconName }> = [
   { view: 'library', label: 'Library', icon: 'library' },
   { view: 'studio', label: 'Pixel Studio', icon: 'studio' },
   { view: 'editor', label: 'Image Editor', icon: 'editor' }
 ]
-
-const isTyping = (): boolean => {
-  const el = document.activeElement
-  return el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement
-}
 
 export function App() {
   const view = useApp((s) => s.view)

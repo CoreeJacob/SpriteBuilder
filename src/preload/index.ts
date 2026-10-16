@@ -27,6 +27,7 @@ const api: SpriteBuilderApi = {
   deleteItems: (paths) => ipcRenderer.invoke('items:delete', paths),
   replaceItem: (path, data) => ipcRenderer.invoke('items:replace', path, data),
   updateMeta: (paths, patch) => ipcRenderer.invoke('items:updateMeta', paths, patch),
+  editTags: (paths, add, remove) => ipcRenderer.invoke('items:editTags', paths, add, remove),
   setComputedMeta: (entries) => ipcRenderer.invoke('items:setComputed', entries),
   revealItem: (path) => ipcRenderer.invoke('items:reveal', path),
   exportItem: (path) => ipcRenderer.invoke('items:export', path),
