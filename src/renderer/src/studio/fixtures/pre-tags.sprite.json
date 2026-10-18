@@ -1,0 +1,15 @@
+{
+  "format": "spritebuilder-sprite",
+  "version": 1,
+  "width": 2,
+  "height": 2,
+  "palette": { "name": "Mine", "colors": ["#ff0000", "#00ff00", "#0000ff"] },
+  "layers": [
+    { "id": "bg", "name": "Background", "visible": true, "opacity": 1 },
+    { "id": "top", "name": "Details", "visible": true, "opacity": 1 }
+  ],
+  "frames": [
+    { "id": "f1", "duration": 100, "cels": { "bg": "/wAA/wAAAAAAAAAA/wAA/w==", "top": "AAAAAAAA//8AAAAAAAAAAA==" } },
+    { "id": "f2", "duration": 250, "cels": { "bg": "AP8A/wAAAAAAAAAAAP8A/w==", "top": "AAAAAAAAAAAAAP+AAAAAAA==" } }
+  ]
+}

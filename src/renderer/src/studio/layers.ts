@@ -42,8 +42,8 @@ function nextName(doc: SpriteDoc, base: string): string {
 }
 
 /** Adds an empty layer directly above `aboveId`. */
-export function addLayer(doc: SpriteDoc, aboveId: string): string {
-  const layer: Layer = { id: newId(), name: nextName(doc, 'Layer'), visible: true, opacity: 1 }
+export function addLayer(doc: SpriteDoc, aboveId: string, name = nextName(doc, 'Layer')): string {
+  const layer: Layer = { id: newId(), name, visible: true, opacity: 1 }
   doc.layers.splice(indexOf(doc, aboveId) + 1, 0, layer)
   for (const f of doc.frames) f.cels[layer.id] = new Uint8ClampedArray(doc.width * doc.height * 4)
   return layer.id

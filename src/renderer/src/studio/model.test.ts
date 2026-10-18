@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import preTags from './fixtures/pre-tags.sprite.json'
+import { addTag } from './frames'
 import { compositeAt, compositeFrame, createDoc, docFromFrames, parseDoc, serializeDoc } from './model'
 
 describe('sprite file format', () => {
@@ -13,6 +15,39 @@ describe('sprite file format', () => {
   })
   it('rejects other JSON', () => {
     expect(() => parseDoc('{"hello":1}')).toThrow()
+  })
+})
+
+// A file saved before animation tags existed, exactly as the app wrote it then.
+describe('sprite files from before tags', () => {
+  const pixels = (doc: ReturnType<typeof parseDoc>, frame: number, layer: string): number[] => Array.from(doc.frames[frame].cels[layer])
+
+  it('is still in the old shape', () => {
+    expect('tags' in preTags).toBe(false)
+  })
+
+  it('opens with no tags and everything else intact', () => {
+    const doc = parseDoc(JSON.stringify(preTags))
+    expect(doc.tags).toEqual([])
+    expect([doc.width, doc.height]).toEqual([2, 2])
+    expect(doc.palette).toEqual({ name: 'Mine', colors: ['#ff0000', '#00ff00', '#0000ff'] })
+    expect(doc.layers.map((l) => l.name)).toEqual(['Background', 'Details'])
+    expect(doc.frames.map((f) => f.duration)).toEqual([100, 250])
+    expect(pixels(doc, 0, 'bg')).toEqual([255, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0, 255, 0, 0, 255])
+    expect(pixels(doc, 1, 'top')).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 128, 0, 0, 0, 0])
+    // The top layer covers the second pixel of frame 1.
+    expect(Array.from(compositeFrame(doc, 0).slice(0, 8))).toEqual([255, 0, 0, 255, 0, 0, 255, 255])
+  })
+
+  it('saves and reopens unchanged, and can be given tags', () => {
+    const doc = parseDoc(JSON.stringify(preTags))
+    const resaved = parseDoc(serializeDoc(doc))
+    expect(resaved).toEqual(doc)
+
+    addTag(doc, 0, 1, 'walk')
+    const tagged = parseDoc(serializeDoc(doc))
+    expect(tagged.tags).toMatchObject([{ name: 'walk', from: 0, to: 1 }])
+    expect(pixels(tagged, 1, 'bg')).toEqual(pixels(doc, 1, 'bg'))
   })
 })
 

@@ -113,6 +113,12 @@ export function floodRegion(width: number, height: number, seeds: number[], incl
   return region
 }
 
+/** The size `w`×`h` shrinks to so it fits inside `maxW`×`maxH` with the same shape (never enlarged). */
+export function fitWithin(w: number, h: number, maxW: number, maxH: number): [number, number] {
+  const scale = Math.min(1, maxW / w, maxH / h)
+  return [Math.max(1, Math.round(w * scale)), Math.max(1, Math.round(h * scale))]
+}
+
 /** Pixel-perfect resize: every output pixel copies the nearest input pixel. */
 export function resizePixels(src: Uint8ClampedArray, sw: number, sh: number, dw: number, dh: number): Uint8ClampedArray<ArrayBuffer> {
   const out = new Uint8ClampedArray(dw * dh * 4)

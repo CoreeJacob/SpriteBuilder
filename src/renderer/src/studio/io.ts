@@ -8,6 +8,7 @@ import { canvasToBytes, loadImage, pixelsToCanvas, readPixels, scaleCanvas } fro
 import { itemUrl } from '@/lib/fileUrl'
 import { encodeGif } from './exporters'
 import { compositeFrame, docFromFrames, MAX_SIZE, parseDoc, serializeDoc, type SpriteDoc } from './model'
+import { fitWithin, resizePixels } from './raster'
 import { useStudio } from './store'
 
 /** Draws one frame onto a new canvas, scaled up with hard pixel edges. */
@@ -73,6 +74,33 @@ export async function openInStudio(item: LibraryItem): Promise<void> {
     app.setView('studio')
   } catch (err) {
     app.notify((err as Error).message, 'error')
+  }
+}
+
+/** Pictures bigger than this are always scaled down to fit the canvas when inserted. */
+const LARGEST_INSERT = 1024
+
+/**
+ * Puts a picture (a library image or a dropped file) on a new layer, centred and still movable.
+ * Animated images bring their first frame. `fit` scales it down to fit the canvas.
+ */
+export async function insertImage(url: string, name: string, fit: boolean): Promise<boolean> {
+  const doc = useStudio.getState().doc
+  const app = useApp.getState()
+  if (!doc) return false
+  try {
+    const img = await loadImage(url)
+    const { naturalWidth: w, naturalHeight: h } = img
+    if (!w || !h) throw new Error('This image has no pixel size (vector images cannot be inserted).')
+    const tooBig = w > LARGEST_INSERT || h > LARGEST_INSERT
+    const [fw, fh] = fit || tooBig ? fitWithin(w, h, doc.width, doc.height) : [w, h]
+    const pixels = readPixels(img, w, h)
+    useStudio.getState().insertImage({ w: fw, h: fh, pixels: fw === w && fh === h ? pixels : resizePixels(pixels, w, h, fw, fh) }, name)
+    if (tooBig && !fit) app.notify(`That image is ${w}×${h}, so it was scaled down to ${fw}×${fh} to fit.`)
+    return true
+  } catch (err) {
+    app.notify((err as Error).message, 'error')
+    return false
   }
 }
 

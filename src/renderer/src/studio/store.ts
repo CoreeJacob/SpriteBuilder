@@ -120,6 +120,8 @@ interface StudioState extends DocLocation {
   copySelection(): ClipboardImage | null
   cutSelection(): ClipboardImage | null
   paste(image: ClipboardImage): void
+  /** Puts a picture on a new layer above the current one, centred and still movable; one undo step. */
+  insertImage(image: Pick<ClipboardImage, 'w' | 'h' | 'pixels'>, name: string): void
 
   setActiveLayer(id: string): void
   moveLayerTo(id: string, targetId: string, position: 'above' | 'below'): void
@@ -479,6 +481,28 @@ export const useStudio = create<StudioState>((set, get) => {
         tool: 'select',
         floating: { x, y, w: image.w, h: image.h, pixels: image.pixels.slice(), done },
         selection: { x, y, w: image.w, h: image.h },
+        version: get().version + 1
+      })
+    },
+
+    insertImage: (image, name) => {
+      const { doc, layerId, frame } = get()
+      if (!doc) return
+      get().commitFloating()
+      const before = cloneState(doc)
+      const id = addLayer(doc, layerId, name)
+      const region = { x: Math.floor((doc.width - image.w) / 2), y: Math.floor((doc.height - image.h) / 2), w: image.w, h: image.h }
+      // Placing the pixels finishes the step, so undo takes away the layer and the picture together.
+      const done = (): void => {
+        history.push({ kind: 'doc', before, after: cloneState(doc), layerBefore: layerId, layerAfter: id, frameBefore: frame, frameAfter: frame })
+        set({ canUndo: true, canRedo: false, dirty: true })
+      }
+      set({
+        layerId: id,
+        tool: 'select',
+        floating: { ...region, pixels: image.pixels.slice(), done },
+        selection: region,
+        dirty: true,
         version: get().version + 1
       })
     },

@@ -6,6 +6,7 @@ import {
   extractRegion,
   floodFill,
   floodFillInRegion,
+  fitWithin,
   getPixel,
   linePoints,
   mirrorPoints,
@@ -127,5 +128,14 @@ describe('regions', () => {
     expect(floodFillInRegion(buf, w, w, 0, 0, RED, { x: 0, y: 0, w: 2, h: 2 })).toBe(4)
     expect(getPixel(buf, w, 2, 2)).toEqual([0, 0, 0, 0])
     expect(floodFillInRegion(buf, w, w, 3, 3, RED, { x: 0, y: 0, w: 2, h: 2 })).toBe(0)
+  })
+})
+
+describe('fitWithin', () => {
+  it('shrinks to fit, keeping the shape, and never enlarges', () => {
+    expect(fitWithin(64, 32, 16, 16)).toEqual([16, 8])
+    expect(fitWithin(10, 40, 16, 16)).toEqual([4, 16])
+    expect(fitWithin(8, 8, 16, 16)).toEqual([8, 8])
+    expect(fitWithin(1000, 1, 16, 16)).toEqual([16, 1]) // never below one pixel
   })
 })

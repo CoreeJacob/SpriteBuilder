@@ -1841,6 +1841,22 @@ textarea.input {
   border-color: var(--accent);
 }
 
+.insert-image-dialog {
+  width: min(760px, calc(100vw - 32px));
+}
+.insert-image-dialog .picker-grid {
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.insert-image-dialog .modal-actions {
+  align-items: center;
+}
+
+.canvas-viewport.dropping {
+  position: relative;
+  background: var(--accent-soft);
+}
+
 /* ---------- canvas size dialog ---------- */
 
 .canvas-size-dialog {

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from '@/app/Icon'
 import { drawPixels } from '@/lib/canvas'
+import { InsertImageDialog } from './InsertImageDialog'
 import type { SpriteDoc } from './model'
 import { useStudio } from './store'
 
@@ -24,6 +25,7 @@ export function LayersPanel() {
   const [editing, setEditing] = useState<string | null>(null)
   const [dragging, setDragging] = useState<string | null>(null)
   const [drop, setDrop] = useState<DropTarget | null>(null)
+  const [inserting, setInserting] = useState(false)
   const finishOpacity = useRef<(() => void) | null>(null)
   const s = useStudio.getState()
 
@@ -43,6 +45,9 @@ export function LayersPanel() {
         <div className="layer-actions">
           <button className="icon-btn" onClick={s.addLayer} title="New layer above this one">
             <Icon name="plus" size={14} />
+          </button>
+          <button className="icon-btn" onClick={() => setInserting(true)} title="Insert an image from the Library as a new layer">
+            <Icon name="image" size={14} />
           </button>
           <button className="icon-btn" onClick={s.duplicateLayer} title="Duplicate layer">
             <Icon name="copy" size={14} />
@@ -163,6 +168,7 @@ export function LayersPanel() {
           <span className="small opacity-value">{Math.round(active.opacity * 100)}%</span>
         </label>
       )}
+      {inserting && <InsertImageDialog onClose={() => setInserting(false)} />}
     </section>
   )
 }

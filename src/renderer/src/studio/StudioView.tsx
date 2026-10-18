@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Icon, type IconName } from '@/app/Icon'
+import { stripExt } from '@shared/paths'
 import { useApp } from '@/app/store'
 import { readPastedImage, writeSystemClipboard } from './clipboard'
-import { confirmDiscard, exportGif, exportPng, saveSprite } from './io'
+import { confirmDiscard, exportGif, exportPng, insertImage, saveSprite } from './io'
 import { CanvasSizeDialog } from './CanvasSizeDialog'
 import { LayersPanel } from './LayersPanel'
 import { PalettePanel } from './PalettePanel'
@@ -27,6 +28,38 @@ const TOOLS: Array<{ tool: Tool; icon: IconName; label: string; key: string; gro
   { tool: 'ellipse', icon: 'ellipse', label: 'Ellipse · ⇧ for a circle', key: 'O' },
   { tool: 'select', icon: 'select', label: 'Select · drag inside to move, ⌥-drag to copy', key: 'M', groupStart: true }
 ]
+
+/** Image files dragged in from Finder land on a new layer, like Insert Image. */
+function CanvasDropZone({ children }: { children: React.ReactNode }) {
+  const [dropping, setDropping] = useState(false)
+  const imageFile = (e: React.DragEvent): File | undefined => [...e.dataTransfer.files].find((f) => f.type.startsWith('image/'))
+  const isFileDrag = (e: React.DragEvent): boolean => e.dataTransfer.types.includes('Files')
+
+  return (
+    <div
+      className={`canvas-viewport ${dropping ? 'dropping' : ''}`}
+      onDragOver={(e) => {
+        if (!isFileDrag(e)) return
+        e.preventDefault()
+        e.dataTransfer.dropEffect = 'copy'
+        setDropping(true)
+      }}
+      onDragLeave={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && setDropping(false)}
+      onDrop={(e) => {
+        setDropping(false)
+        if (!isFileDrag(e)) return
+        e.preventDefault()
+        const file = imageFile(e)
+        if (!file) return useApp.getState().notify('Only image files can be dropped on the canvas.', 'error')
+        const url = URL.createObjectURL(file)
+        void insertImage(url, stripExt(file.name), false).finally(() => URL.revokeObjectURL(url))
+      }}
+    >
+      {children}
+      {dropping && <div className="drop-overlay">Drop to add as a new layer</div>}
+    </div>
+  )
+}
 
 const PRESETS = [8, 16, 32, 64, 128]
 const EXPORT_SCALES = [1, 2, 4, 8, 16]
@@ -56,11 +89,11 @@ export function StudioView() {
       <div className="studio-body">
         <ToolBox />
         <div className="canvas-column">
-          <div className="canvas-viewport">
+          <CanvasDropZone>
             <div className="canvas-stage">
               <PixelCanvas onHover={setHover} />
             </div>
-          </div>
+          </CanvasDropZone>
           <Timeline />
         </div>
         <SidePanel hover={hover} />
