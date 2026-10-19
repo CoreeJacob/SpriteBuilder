@@ -8,6 +8,7 @@ A Mac desktop app for keeping a sprite library, drawing 8-bit pixel art, and (so
 npm install
 npm run dev      # app with live reload
 npm test         # unit tests
+npm run test:e2e # builds the app, then clicks through it on a throwaway library (windows open while it runs)
 npm run dist     # build a .dmg into dist/
 ```
 
@@ -27,6 +28,8 @@ npm run dist     # build a .dmg into dist/
 - `src/shared/` — types and helpers shared by both sides
 - `src/renderer/src/library/` — Library screen; `filter.ts` holds filter and sort logic
 - `src/renderer/src/studio/` — Pixel Studio; `model.ts` is the sprite file format, `raster.ts` the pixel operations
+- `e2e/` — end-to-end tests (Playwright). `support/app.ts` launches the app on a fresh library made by `support/seed.ts`;
+  results land in `e2e-report/` (open `index.html` to see every check)
 
 ## Status
 
