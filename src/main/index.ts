@@ -138,7 +138,14 @@ function buildMenu(): void {
           { role: 'cut' },
           { role: 'copy' },
           { role: 'paste' },
-          { label: 'Select All', accelerator: 'CmdOrCtrl+A', click: send('selectAll') }
+          { label: 'Select All', accelerator: 'CmdOrCtrl+A', click: send('selectAll') },
+          { type: 'separator' },
+          // The keys are only shown here; each screen handles them itself, so typing a capital
+          // letter in a text box never flips anything.
+          { label: 'Flip Horizontally', accelerator: 'Shift+H', registerAccelerator: false, click: send('flipH') },
+          { label: 'Flip Vertically', accelerator: 'Shift+V', registerAccelerator: false, click: send('flipV') },
+          { label: 'Rotate 90° Right', accelerator: 'Shift+R', registerAccelerator: false, click: send('rotateCW') },
+          { label: 'Rotate 90° Left', accelerator: 'Alt+Shift+R', registerAccelerator: false, click: send('rotateCCW') }
         ]
       },
       {

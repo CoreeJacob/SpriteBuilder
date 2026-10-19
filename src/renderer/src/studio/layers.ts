@@ -3,7 +3,12 @@
 import { newId, type FrameTag, type Layer, type SpriteDoc } from './model'
 import { blendOver } from './raster'
 
-/** A deep copy of everything undo needs to restore after a layer change. */
+/**
+ * Everything undo needs to put a layer or frame change back. Pixel buffers are shared with
+ * the sprite rather than copied: changes made through this module always put new buffers in
+ * place instead of painting over old ones, and drawing (which does paint in place) has its
+ * own undo steps. So an unchanged layer costs nothing to remember.
+ */
 export interface DocState {
   width: number
   height: number
@@ -12,26 +17,47 @@ export interface DocState {
   tags: FrameTag[]
 }
 
-export function cloneState(doc: SpriteDoc): DocState {
+/** Copies the small parts (names, order, timings) and keeps references to the pixel buffers. */
+export function snapshot(doc: Pick<SpriteDoc, keyof DocState>): DocState {
   return {
     width: doc.width,
     height: doc.height,
     tags: doc.tags.map((t) => ({ ...t })),
     layers: doc.layers.map((l) => ({ ...l })),
-    frames: doc.frames.map((f) => ({
-      ...f,
-      cels: Object.fromEntries(Object.entries(f.cels).map(([id, px]) => [id, px.slice()]))
-    }))
+    frames: doc.frames.map((f) => ({ ...f, cels: { ...f.cels } }))
   }
 }
 
-export function restoreState(doc: SpriteDoc, state: DocState): void {
-  const copy = cloneState({ ...doc, ...state })
-  doc.width = copy.width
-  doc.height = copy.height
-  doc.tags = copy.tags
-  doc.layers = copy.layers
-  doc.frames = copy.frames
+export function restoreSnapshot(doc: SpriteDoc, state: DocState): void {
+  // Copy again, so later edits to the sprite's layer list or timings can't change the snapshot.
+  Object.assign(doc, snapshot(state))
+}
+
+/** True when two snapshots describe the same sprite (pixel buffers compared by identity). */
+export function sameSnapshot(a: DocState, b: DocState): boolean {
+  return (
+    a.width === b.width &&
+    a.height === b.height &&
+    JSON.stringify(a.tags) === JSON.stringify(b.tags) &&
+    JSON.stringify(a.layers) === JSON.stringify(b.layers) &&
+    a.frames.length === b.frames.length &&
+    a.frames.every((f, i) => {
+      const g = b.frames[i]
+      const ids = Object.keys(f.cels)
+      return f.id === g.id && f.duration === g.duration && ids.length === Object.keys(g.cels).length && ids.every((id) => f.cels[id] === g.cels[id])
+    })
+  )
+}
+
+/** Bytes of pixels that only one of the two snapshots holds: what keeping this undo step costs. */
+export function snapshotBytes(a: DocState, b: DocState): number {
+  const buffers = (s: DocState): Set<Uint8ClampedArray> => new Set(s.frames.flatMap((f) => Object.values(f.cels)))
+  const inA = buffers(a)
+  const inB = buffers(b)
+  let bytes = 0
+  for (const buf of inA) if (!inB.has(buf)) bytes += buf.byteLength
+  for (const buf of inB) if (!inA.has(buf)) bytes += buf.byteLength
+  return bytes
 }
 
 const indexOf = (doc: SpriteDoc, id: string): number => doc.layers.findIndex((l) => l.id === id)
@@ -96,7 +122,12 @@ export function mergeDown(doc: SpriteDoc, id: string): string {
   for (const f of doc.frames) {
     const src = f.cels[top.id]
     const dst = f.cels[below.id]
-    if (src && dst && top.visible) blendOver(dst, src, top.opacity)
+    if (src && dst && top.visible) {
+      // A new buffer, so undo can keep sharing the old one.
+      const merged = dst.slice()
+      blendOver(merged, src, top.opacity)
+      f.cels[below.id] = merged
+    }
     delete f.cels[top.id]
   }
   doc.layers.splice(i, 1)

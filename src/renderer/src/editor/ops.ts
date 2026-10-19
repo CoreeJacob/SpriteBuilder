@@ -2,7 +2,7 @@
 // never changed, which keeps undo simple.
 
 import { applyPalette, quantize } from 'gifenc'
-import { colorsByUse, floodRegion, resizePixels, type RGBA } from '@/studio/raster'
+import { colorsByUse, floodRegion, resizePixels, turnPixels, type RGBA, type Turn } from '@/studio/raster'
 
 export interface Img {
   width: number
@@ -71,24 +71,16 @@ export function trim(img: Img): Img {
   return bounds ? crop(img, bounds) : copyImg(img)
 }
 
-/** Remaps every pixel: (x, y) in the result comes from `source(x, y)` in the input. */
-function remap(img: Img, width: number, height: number, source: (x: number, y: number) => [number, number]): Img {
-  const out = blank(width, height)
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const [sx, sy] = source(x, y)
-      const si = (sy * img.width + sx) * 4
-      out.data.set(img.data.subarray(si, si + 4), (y * width + x) * 4)
-    }
-  }
-  return out
+export const turnImg = (img: Img, turn: Turn): Img => {
+  const { w, h, pixels } = turnPixels(img.data, img.width, img.height, turn)
+  return { width: w, height: h, data: pixels }
 }
 
-export const rotateCW = (img: Img): Img => remap(img, img.height, img.width, (x, y) => [y, img.height - 1 - x])
-export const rotateCCW = (img: Img): Img => remap(img, img.height, img.width, (x, y) => [img.width - 1 - y, x])
-export const rotate180 = (img: Img): Img => remap(img, img.width, img.height, (x, y) => [img.width - 1 - x, img.height - 1 - y])
-export const flipH = (img: Img): Img => remap(img, img.width, img.height, (x, y) => [img.width - 1 - x, y])
-export const flipV = (img: Img): Img => remap(img, img.width, img.height, (x, y) => [x, img.height - 1 - y])
+export const rotateCW = (img: Img): Img => turnImg(img, 'rotateCW')
+export const rotateCCW = (img: Img): Img => turnImg(img, 'rotateCCW')
+export const rotate180 = (img: Img): Img => turnImg(img, 'rotate180')
+export const flipH = (img: Img): Img => turnImg(img, 'flipH')
+export const flipV = (img: Img): Img => turnImg(img, 'flipV')
 
 /** Pixel-perfect resize: each output pixel copies the nearest input pixel. */
 export const resizeNearest = (img: Img, width: number, height: number): Img => ({

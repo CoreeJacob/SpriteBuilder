@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addLayer, cloneState, deleteLayer, duplicateLayer, mergeDown, moveLayer, moveLayerTo, restoreState } from './layers'
+import { addLayer, deleteLayer, duplicateLayer, mergeDown, moveLayer, moveLayerTo, restoreSnapshot, sameSnapshot, snapshot, snapshotBytes } from './layers'
 import { compositeFrame, createDoc } from './model'
 
 describe('layers', () => {
@@ -37,16 +37,38 @@ describe('layers', () => {
     expect(Array.from(compositeFrame(doc))).toEqual(before)
   })
 
-  it('restores a saved state exactly, without sharing pixel buffers', () => {
+  it('restores a snapshot, sharing pixel buffers instead of copying them', () => {
     const doc = createDoc(1, 1)
-    const saved = cloneState(doc)
+    const base = doc.layers[0].id
+    const saved = snapshot(doc)
+    expect(saved.frames[0].cels[base]).toBe(doc.frames[0].cels[base]) // shared, not copied
+    addLayer(doc, base)
+    doc.layers[0].name = 'Renamed'
+    restoreSnapshot(doc, saved)
+    expect(doc.layers.map((l) => l.name)).toEqual(['Layer 1'])
+    doc.layers[0].name = 'Changed after'
+    expect(saved.layers[0].name).toBe('Layer 1') // the snapshot's own copy of the layer list
+  })
+
+  it('merging makes a new buffer, leaving the old one for undo', () => {
+    const doc = createDoc(1, 1)
+    const base = doc.layers[0].id
+    const top = addLayer(doc, base)
+    doc.frames[0].cels[top].set([0, 0, 255, 255])
+    const before = snapshot(doc)
+    mergeDown(doc, top)
+    expect(Array.from(before.frames[0].cels[base])).toEqual([0, 0, 0, 0])
+    expect(Array.from(doc.frames[0].cels[base])).toEqual([0, 0, 255, 255])
+  })
+
+  it('counts only the pixels a change replaced as the cost of undoing it', () => {
+    const doc = createDoc(4, 4) // 64 bytes per layer
+    const before = snapshot(doc)
     addLayer(doc, doc.layers[0].id)
-    doc.frames[0].cels[doc.layers[0].id].set([1, 2, 3, 255])
-    restoreState(doc, saved)
-    expect(doc.layers).toHaveLength(1)
-    expect(Array.from(doc.frames[0].cels[doc.layers[0].id])).toEqual([0, 0, 0, 0])
-    doc.frames[0].cels[doc.layers[0].id][0] = 9
-    expect(saved.frames[0].cels[doc.layers[0].id][0]).toBe(0)
+    const after = snapshot(doc)
+    expect(snapshotBytes(before, after)).toBe(64)
+    expect(sameSnapshot(before, snapshot(doc))).toBe(false)
+    expect(sameSnapshot(after, snapshot(doc))).toBe(true)
   })
 })
 

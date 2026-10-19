@@ -129,4 +129,5 @@ export interface SpriteBuilderApi {
   onMenuCommand(callback: (command: MenuCommand) => void): () => void
 }
 
-export type MenuCommand = 'undo' | 'redo' | 'selectAll' | 'backup' | 'restore' | 'shortcuts'
+export type TurnCommand = 'flipH' | 'flipV' | 'rotateCW' | 'rotateCCW'
+export type MenuCommand = 'undo' | 'redo' | 'selectAll' | 'backup' | 'restore' | 'shortcuts' | TurnCommand

@@ -13,7 +13,8 @@ import {
   save,
   saveCopy,
   sliceToFiles,
-  sliceToStudio
+  sliceToStudio,
+  turnImage
 } from './io'
 import { ImageCanvas, type HoverInfo } from './ImageCanvas'
 import {
@@ -91,6 +92,9 @@ function useEditorShortcuts(): void {
       if (e.metaKey && e.key.toLowerCase() === 's') {
         e.preventDefault()
         void (e.shiftKey ? saveCopy() : save())
+      } else if (e.shiftKey && !e.metaKey && ['KeyH', 'KeyV', 'KeyR'].includes(e.code)) {
+        e.preventDefault()
+        turnImage(e.code === 'KeyH' ? 'flipH' : e.code === 'KeyV' ? 'flipV' : e.altKey ? 'rotateCCW' : 'rotateCW')
       } else if (e.key === 'Enter' && s.mode === 'crop' && s.cropRect) {
         applyCrop()
       } else if (e.key === 'Escape') {

@@ -3,6 +3,7 @@ import { useEnrichment } from '@/library/enrich'
 import { LibraryView } from '@/library/LibraryView'
 import { EditorView } from '@/editor/EditorView'
 import { StudioView } from '@/studio/StudioView'
+import { turnImage } from '@/editor/io'
 import { useEditor } from '@/editor/store'
 import { useStudioAutosave } from '@/studio/autosave'
 import { useSavedPalettes } from '@/studio/savedPalettes'
@@ -48,6 +49,11 @@ export function App() {
         if (command === 'backup') return void backupLibrary()
         if (command === 'restore') return void restoreLibrary()
         if (command === 'shortcuts') return useApp.getState().setShowShortcuts(!useApp.getState().showShortcuts)
+        if (command === 'flipH' || command === 'flipV' || command === 'rotateCW' || command === 'rotateCCW') {
+          if (view === 'studio') useStudio.getState().turn(command)
+          else if (view === 'editor') turnImage(command)
+          return
+        }
         if (isTyping()) document.execCommand(command)
         else if (command === 'selectAll') window.dispatchEvent(new Event(`${view}:selectAll`))
         else if (view === 'studio') useStudio.getState()[command]()

@@ -1857,6 +1857,31 @@ textarea.input {
   background: var(--accent-soft);
 }
 
+.tool-popover {
+  position: relative;
+}
+.tool-popover .dropdown {
+  top: 0;
+  left: calc(100% + 10px);
+  width: 230px;
+}
+.tool-popover .filter-options {
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+.tool-popover .chip {
+  flex: 1;
+  padding-inline: 0;
+  text-align: center;
+}
+.brush-size {
+  font-size: 11px;
+  font-weight: 600;
+}
+.menu-keys {
+  margin-left: auto;
+}
+
 /* ---------- canvas size dialog ---------- */
 
 .canvas-size-dialog {

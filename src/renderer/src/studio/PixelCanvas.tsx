@@ -3,11 +3,13 @@ import { useApp } from '@/app/store'
 import { pixelsToCanvas } from '@/lib/canvas'
 import { compositeAt } from './model'
 import {
+  brushPoints,
   constrainEnd,
   ellipsePoints,
   floodFillInRegion,
   getPixel,
   inRegion,
+  isCorner,
   linePoints,
   mirrorPoints,
   normalizeRect,
@@ -18,13 +20,20 @@ import {
   TRANSPARENT,
   type RGBA
 } from './raster'
-import { useStudio, ZOOM_LEVELS, type Tool } from './store'
+import { BRUSH_TOOLS, useStudio, ZOOM_LEVELS, type Tool } from './store'
 
 type Cell = [number, number]
 
 /** What the pointer is doing between pointerdown and pointerup. */
 type Drag =
-  | { kind: 'stroke'; done: () => void; last: Cell; color: RGBA }
+  | {
+      kind: 'stroke'
+      done: () => void
+      last: Cell
+      color: RGBA
+      /** Pixel-perfect only: the last few points drawn, and the layer as it was before the stroke. */
+      perfect: { trail: Cell[]; base: Uint8ClampedArray } | null
+    }
   | { kind: 'shape'; done: () => void; tool: 'line' | 'rect' | 'ellipse'; start: Cell; base: Uint8ClampedArray; color: RGBA }
   | { kind: 'select'; anchor: Cell; moved: boolean }
   | { kind: 'move'; startCell: Cell; origin: Cell }
@@ -49,6 +58,8 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
   const mirrorY = useStudio((s) => s.mirrorY)
   const frame = useStudio((s) => s.frame)
   const onionSkin = useStudio((s) => s.onionSkin)
+  const brushSize = useStudio((s) => s.brushSize)
+  const brushShape = useStudio((s) => s.brushShape)
   const resolvedTheme = useApp((s) => s.resolvedTheme)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const drag = useRef<Drag | null>(null)
@@ -197,14 +208,26 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
     }
 
     if (hover && tool !== 'select') {
-      const [hx, hy] = hover
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)'
-      ctx.lineWidth = 1
-      ctx.strokeRect(hx * zoom + 0.5, hy * zoom + 0.5, zoom - 1, zoom - 1)
+      // Outline exactly the pixels the brush would paint.
+      const brush = BRUSH_TOOLS.includes(tool) && !altDown
+      const cells = brush ? brushPoints([hover], brushSize, brushShape) : [hover]
+      const covered = new Set(cells.map(([x, y]) => `${x},${y}`))
+      const edges = new Path2D()
+      for (const [x, y] of cells) {
+        const [l, t, r, b] = [x * zoom, y * zoom, (x + 1) * zoom, (y + 1) * zoom]
+        if (!covered.has(`${x},${y - 1}`)) (edges.moveTo(l, t), edges.lineTo(r, t))
+        if (!covered.has(`${x},${y + 1}`)) (edges.moveTo(l, b), edges.lineTo(r, b))
+        if (!covered.has(`${x - 1},${y}`)) (edges.moveTo(l, t), edges.lineTo(l, b))
+        if (!covered.has(`${x + 1},${y}`)) (edges.moveTo(r, t), edges.lineTo(r, b))
+      }
+      ctx.lineWidth = 3
       ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)'
-      ctx.strokeRect(hx * zoom - 0.5, hy * zoom - 0.5, zoom + 1, zoom + 1)
+      ctx.stroke(edges)
+      ctx.lineWidth = 1
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)'
+      ctx.stroke(edges)
     }
-  }, [doc, version, zoom, showGrid, tileMode, repeat, hover, selection, floating, mirrorX, mirrorY, tool, frame, onionSkin, resolvedTheme, settledVersion])
+  }, [doc, version, zoom, showGrid, tileMode, repeat, hover, selection, floating, mirrorX, mirrorY, tool, frame, onionSkin, resolvedTheme, settledVersion, brushSize, brushShape, altDown])
 
   if (!doc) return null
   const W = doc.width
@@ -222,16 +245,31 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
   const effectiveTool = (e: { altKey: boolean }): Tool =>
     e.altKey && PICKS_WITH_ALT.includes(tool) ? 'eyedropper' : tool
 
-  /** Draws points with tile wrapping, mirroring and the selection as a stencil. */
+  /** The pixels a list of brush positions reaches, with brush size, tile wrapping, mirroring and the selection as a stencil. */
+  const reach = (points: Cell[]): Cell[] => {
+    const s = useStudio.getState()
+    const clip = s.floating ? null : s.selection
+    const stamped = brushPoints(points, s.brushSize, s.brushShape).map(wrap)
+    return mirrorPoints(stamped, W, H, s.mirrorX, s.mirrorY).filter(([x, y]) => inRegion(clip, x, y))
+  }
+
   const plot = (points: Cell[], color: RGBA): void => {
     const s = useStudio.getState()
     const cel = s.activeCel()
     if (!cel) return
-    const clip = s.floating ? null : s.selection
-    for (const [x, y] of mirrorPoints(points.map(wrap), W, H, s.mirrorX, s.mirrorY)) {
-      if (inRegion(clip, x, y)) setPixel(cel, W, H, x, y, color)
-    }
+    for (const [x, y] of reach(points)) setPixel(cel, W, H, x, y, color)
     s.touch()
+  }
+
+  /** Puts pixels back to how they were in `base` (pixel-perfect takes back corner pixels). */
+  const unplot = (points: Cell[], base: Uint8ClampedArray): void => {
+    const cel = useStudio.getState().activeCel()
+    if (!cel) return
+    for (const [x, y] of reach(points)) {
+      if (x < 0 || y < 0 || x >= W || y >= H) continue
+      const i = (y * W + x) * 4
+      cel.set(base.subarray(i, i + 4), i)
+    }
   }
 
   const shapePoints = (d: Extract<Drag, { kind: 'shape' }>, end: Cell, shift: boolean): Cell[] => {
@@ -308,7 +346,9 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
     }
 
     // Pencil or eraser. Shift-click draws a straight line from the last click.
-    drag.current = { kind: 'stroke', done, last: cell, color }
+    const cel = s.activeCel()
+    const perfect = s.pixelPerfect && s.brushSize === 1 && cel ? { trail: [cell], base: cel.slice() } : null
+    drag.current = { kind: 'stroke', done, last: cell, color, perfect }
     plot(e.shiftKey && lastClick.current ? linePoints(...lastClick.current, ...cell) : [cell], color)
   }
 
@@ -327,7 +367,20 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
     const s = useStudio.getState()
     if (d.kind === 'stroke') {
       if (cell[0] === d.last[0] && cell[1] === d.last[1]) return
-      plot(linePoints(...d.last, ...cell), d.color)
+      const points = linePoints(...d.last, ...cell)
+      if (d.perfect) {
+        // Draw one pixel at a time; when the last three make an L, take the corner back out.
+        const { trail, base } = d.perfect
+        for (const p of points.slice(1)) {
+          trail.push(p)
+          plot([p], d.color)
+          const n = trail.length
+          if (n >= 3 && isCorner(trail[n - 3], trail[n - 2], trail[n - 1])) unplot(trail.splice(n - 2, 1), base)
+          if (trail.length > 3) trail.shift()
+        }
+      } else {
+        plot(points, d.color)
+      }
       d.last = cell
     } else if (d.kind === 'shape') {
       s.activeCel()?.set(d.base)

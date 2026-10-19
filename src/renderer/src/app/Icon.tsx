@@ -56,6 +56,10 @@ const PATHS = {
   moon: 'M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z',
   themeAuto: 'M12 21a9 9 0 1 0 0-18v18zM12 3a9 9 0 0 1 0 18',
   more: 'M5 12h.01M12 12h.01M19 12h.01',
+  flipH: 'M12 3v18M4 7v10l5-5zM20 7v10l-5-5z',
+  flipV: 'M3 12h18M7 4h10l-5 5zM7 20h10l-5-5z',
+  rotateCW: 'M19.5 12a7.5 7.5 0 1 1-2.2-5.3M20 4v5h-5',
+  rotateCCW: 'M4.5 12a7.5 7.5 0 1 0 2.2-5.3M4 4v5h5',
   image: 'M4 5h16v14H4zM4 16l5-5 4 4 2-2 5 5M15.5 9.5h.01',
   onion: 'M9 6a6 6 0 1 0 0 12M15 6a6 6 0 1 1 0 12M12 7.5a6 6 0 0 1 0 9'
 } as const

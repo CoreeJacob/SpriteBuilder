@@ -330,3 +330,123 @@ export function blendOver(dst: Uint8ClampedArray, src: Uint8ClampedArray, opacit
     dst[i + 3] = a * 255
   }
 }
+
+/**
+ * The smallest rectangle holding every pixel that differs between two same-sized buffers,
+ * or null when they match. Undo keeps just this part of a change.
+ */
+export function changedRegion(a: Uint8ClampedArray, b: Uint8ClampedArray, width: number, height: number): Region | null {
+  // Whole pixels compare as one 32-bit number each.
+  const pa = new Uint32Array(a.buffer, a.byteOffset, width * height)
+  const pb = new Uint32Array(b.buffer, b.byteOffset, width * height)
+  let left = width
+  let right = -1
+  let top = -1
+  let bottom = -1
+  for (let y = 0; y < height; y++) {
+    const row = y * width
+    let first = -1
+    for (let x = 0; x < width; x++) {
+      if (pa[row + x] !== pb[row + x]) {
+        first = x
+        break
+      }
+    }
+    if (first === -1) continue
+    let last = first
+    for (let x = width - 1; x > first; x--) {
+      if (pa[row + x] !== pb[row + x]) {
+        last = x
+        break
+      }
+    }
+    if (top === -1) top = y
+    bottom = y
+    left = Math.min(left, first)
+    right = Math.max(right, last)
+  }
+  return top === -1 ? null : { x: left, y: top, w: right - left + 1, h: bottom - top + 1 }
+}
+
+// ---------- flipping and turning ----------
+
+export type Turn = 'flipH' | 'flipV' | 'rotateCW' | 'rotateCCW' | 'rotate180'
+
+/** Flips or turns a w×h image. Turning by 90° swaps the width and height. */
+export function turnPixels(src: Uint8ClampedArray, w: number, h: number, turn: Turn): { w: number; h: number; pixels: Uint8ClampedArray<ArrayBuffer> } {
+  const quarter = turn === 'rotateCW' || turn === 'rotateCCW'
+  const ow = quarter ? h : w
+  const oh = quarter ? w : h
+  const out = new Uint8ClampedArray(ow * oh * 4)
+  const from = new Uint32Array(src.buffer, src.byteOffset, w * h)
+  const to = new Uint32Array(out.buffer)
+  for (let y = 0; y < oh; y++) {
+    for (let x = 0; x < ow; x++) {
+      // (x, y) in the result comes from (sx, sy) in the source.
+      const [sx, sy] =
+        turn === 'flipH' ? [w - 1 - x, y]
+        : turn === 'flipV' ? [x, h - 1 - y]
+        : turn === 'rotate180' ? [w - 1 - x, h - 1 - y]
+        : turn === 'rotateCW' ? [y, h - 1 - x]
+        : [w - 1 - y, x]
+      to[y * ow + x] = from[sy * w + sx]
+    }
+  }
+  return { w: ow, h: oh, pixels: out }
+}
+
+// ---------- brushes ----------
+
+export type BrushShape = 'square' | 'round'
+export const MAX_BRUSH = 8
+
+const brushCache = new Map<string, Array<[number, number]>>()
+
+/**
+ * The pixels a brush covers, relative to the pointer. Odd sizes are centred on it; even sizes
+ * reach one pixel further right and down. Round brushes drop the corners, as in Aseprite.
+ */
+export function brushOffsets(size: number, shape: BrushShape): Array<[number, number]> {
+  const key = `${size}${shape}`
+  const hit = brushCache.get(key)
+  if (hit) return hit
+  const start = -Math.floor((size - 1) / 2)
+  const centre = (size - 1) / 2
+  const radius = size / 2 - 0.25
+  const offsets: Array<[number, number]> = []
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      if (shape === 'round' && size > 2 && Math.hypot(x - centre, y - centre) > radius) continue
+      offsets.push([start + x, start + y])
+    }
+  }
+  brushCache.set(key, offsets)
+  return offsets
+}
+
+/** Every pixel a brush paints along a list of points (each pixel once). */
+export function brushPoints(points: Array<[number, number]>, size: number, shape: BrushShape): Array<[number, number]> {
+  if (size <= 1) return points
+  const offsets = brushOffsets(size, shape)
+  const seen = new Set<string>()
+  const out: Array<[number, number]> = []
+  for (const [x, y] of points) {
+    for (const [dx, dy] of offsets) {
+      const key = `${x + dx},${y + dy}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      out.push([x + dx, y + dy])
+    }
+  }
+  return out
+}
+
+/**
+ * Pixel-perfect drawing: true when `b` is the inside corner of an L between `a` and `c`
+ * (a and c touch diagonally, b touches both side-on). Removing such corners turns jagged
+ * freehand lines into clean one-pixel diagonals.
+ */
+export function isCorner([ax, ay]: [number, number], [bx, by]: [number, number], [cx, cy]: [number, number]): boolean {
+  const sideOn = (px: number, py: number, qx: number, qy: number): boolean => Math.abs(px - qx) + Math.abs(py - qy) === 1
+  return Math.abs(ax - cx) === 1 && Math.abs(ay - cy) === 1 && sideOn(ax, ay, bx, by) && sideOn(bx, by, cx, cy)
+}

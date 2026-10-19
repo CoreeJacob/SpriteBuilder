@@ -31,6 +31,7 @@ const GROUPS: Array<{ title: string; keys: Array<[string, string]> }> = [
       ['I', 'Eyedropper (or hold ⌥)'],
       ['L / R / O', 'Line / Rectangle / Ellipse'],
       ['F', 'Filled or outline shapes'],
+      ['[ / ]', 'Smaller / bigger brush'],
       ['M', 'Select'],
       ['X', 'Swap front and back colours'],
       ['⇧ while drawing', 'Straight lines, squares, circles']
@@ -41,6 +42,8 @@ const GROUPS: Array<{ title: string; keys: Array<[string, string]> }> = [
     keys: [
       ['⌘C / ⌘X / ⌘V', 'Copy / Cut / Paste'],
       ['Arrows (⇧ = 8px)', 'Nudge the selection'],
+      ['⇧H / ⇧V', 'Flip the selection (or layer)'],
+      ['⇧R / ⌥⇧R', 'Rotate 90° right / left'],
       ['⌫', 'Clear the selection'],
       ['Enter', 'Drop moved pixels'],
       ['Esc / ⌘D', 'Deselect'],

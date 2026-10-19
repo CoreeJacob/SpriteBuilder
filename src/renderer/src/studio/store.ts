@@ -7,26 +7,43 @@ import { resizeCanvas, scaleSprite, type Anchor } from './canvasSize'
 import { addFrame, addTag, deleteFrame, deleteTag, duplicateFrame, moveFrame, renameTag, setDuration, setFps } from './frames'
 import {
   addLayer,
-  cloneState,
   deleteLayer,
   duplicateLayer,
   mergeDown,
   moveLayer,
   moveLayerTo,
-  restoreState,
+  restoreSnapshot,
+  sameSnapshot,
+  snapshot,
+  snapshotBytes,
   type DocState
 } from './layers'
 import { createDoc, type Layer, type SpriteDoc } from './model'
 import type { Palette } from './palettes'
-import { blitRegion, clearRegion, extractRegion, type Region } from './raster'
+import { blitRegion, changedRegion, clearRegion, extractRegion, MAX_BRUSH, turnPixels, type BrushShape, type Region, type Turn } from './raster'
 
 export type Tool = 'pencil' | 'eraser' | 'fill' | 'eyedropper' | 'line' | 'rect' | 'ellipse' | 'select'
 
 export const SHAPE_TOOLS: Tool[] = ['line', 'rect', 'ellipse']
 
+/** Tools that paint with the brush (fill and the eyedropper work on single pixels). */
+export const BRUSH_TOOLS: Tool[] = ['pencil', 'eraser', 'line', 'rect', 'ellipse']
+
 type HistoryEntry =
-  | { kind: 'cels'; frameId: string; layerId: string; before: Uint8ClampedArray; after: Uint8ClampedArray }
   | {
+      /** Drawing: only the rectangle that changed, before and after. */
+      kind: 'pixels'
+      frameId: string
+      layerId: string
+      width: number
+      height: number
+      region: Region
+      before: Uint8ClampedArray
+      after: Uint8ClampedArray
+      bytes: number
+    }
+  | {
+      /** Layer and frame changes: the sprite's structure before and after (pixels shared). */
       kind: 'doc'
       before: DocState
       after: DocState
@@ -34,6 +51,7 @@ type HistoryEntry =
       layerAfter: string
       frameBefore: number
       frameAfter: number
+      bytes: number
     }
 
 /** Pixels lifted off the layer by the select tool, waiting to be dropped somewhere. */
@@ -71,6 +89,10 @@ interface StudioState extends DocLocation {
   primary: string
   secondary: string
   fillShapes: boolean
+  brushSize: number
+  brushShape: BrushShape
+  /** Freehand 1-pixel lines skip the extra corner pixels of jagged steps. */
+  pixelPerfect: boolean
   mirrorX: boolean
   mirrorY: boolean
   selection: Region | null
@@ -106,6 +128,9 @@ interface StudioState extends DocLocation {
   addToPalette(color: string): void
   removeFromPalette(color: string): void
   toggleFillShapes(): void
+  setBrushSize(size: number): void
+  setBrushShape(shape: BrushShape): void
+  togglePixelPerfect(): void
   toggleMirrorX(): void
   toggleMirrorY(): void
 
@@ -120,6 +145,8 @@ interface StudioState extends DocLocation {
   copySelection(): ClipboardImage | null
   cutSelection(): ClipboardImage | null
   paste(image: ClipboardImage): void
+  /** Flips or turns the selection, or the whole layer when nothing is selected. */
+  turn(turn: Turn): void
   /** Puts a picture on a new layer above the current one, centred and still movable; one undo step. */
   insertImage(image: Pick<ClipboardImage, 'w' | 'h' | 'pixels'>, name: string): void
 
@@ -170,28 +197,13 @@ export function fitZoom(width: number, height: number): number {
   return [...ZOOM_LEVELS].reverse().find((z) => z <= target) ?? 1
 }
 
-const history = new History<HistoryEntry>(100)
+/** Undo keeps up to this many steps, and forgets the oldest ones once they hold this much. */
+const UNDO_STEPS = 100
+const UNDO_BYTES = 256 * 1024 * 1024
+const history = new History<HistoryEntry>(UNDO_STEPS, UNDO_BYTES, (e) => e.bytes)
 
-const sameBytes = (a: Uint8ClampedArray, b: Uint8ClampedArray): boolean =>
-  a.length === b.length && a.every((v, i) => v === b[i])
-
-/** True when two snapshots match: layers, frame order and timing, and every pixel. */
-const sameState = (a: DocState, b: DocState): boolean =>
-  a.width === b.width &&
-  a.height === b.height &&
-  JSON.stringify(a.tags) === JSON.stringify(b.tags) &&
-  JSON.stringify(a.layers) === JSON.stringify(b.layers) &&
-  a.frames.length === b.frames.length &&
-  a.frames.every((f, i) => {
-    const g = b.frames[i]
-    const ids = Object.keys(f.cels)
-    return (
-      f.id === g.id &&
-      f.duration === g.duration &&
-      ids.length === Object.keys(g.cels).length &&
-      ids.every((id) => g.cels[id] && sameBytes(f.cels[id], g.cels[id]))
-    )
-  })
+/** Memory currently held by undo and redo (for tests and diagnostics). */
+export const undoMemory = (): number => history.bytes
 
 export const useStudio = create<StudioState>((set, get) => {
   /** Applies a layer or frame change as one undo step. */
@@ -199,12 +211,12 @@ export const useStudio = create<StudioState>((set, get) => {
     const { doc, layerId, frame } = get()
     if (!doc) return
     get().commitFloating()
-    const before = cloneState(doc)
+    const before = snapshot(doc)
     const next = change(doc, { layerId, frame }) ?? {}
     const nextLayer = next.layerId ?? layerId
     const nextFrame = next.frame ?? frame
-    const after = cloneState(doc)
-    if (sameState(before, after) && nextLayer === layerId && nextFrame === frame) return
+    const after = snapshot(doc)
+    if (sameSnapshot(before, after) && nextLayer === layerId && nextFrame === frame) return
     history.push({
       kind: 'doc',
       before,
@@ -212,7 +224,8 @@ export const useStudio = create<StudioState>((set, get) => {
       layerBefore: layerId,
       layerAfter: nextLayer,
       frameBefore: frame,
-      frameAfter: nextFrame
+      frameAfter: nextFrame,
+      bytes: snapshotBytes(before, after)
     })
     set({ layerId: nextLayer, frame: nextFrame, canUndo: true, canRedo: false, dirty: true, version: get().version + 1 })
   }
@@ -222,15 +235,17 @@ export const useStudio = create<StudioState>((set, get) => {
   const applyEntry = (entry: HistoryEntry, direction: 'undo' | 'redo'): void => {
     const doc = get().doc
     if (!doc) return
-    if (entry.kind === 'cels') {
+    if (entry.kind === 'pixels') {
       const frameIndex = doc.frames.findIndex((f) => f.id === entry.frameId)
       const cel = doc.frames[frameIndex]?.cels[entry.layerId]
-      if (cel) cel.set(direction === 'undo' ? entry.before : entry.after)
+      if (cel && doc.width === entry.width && doc.height === entry.height) {
+        blitRegion(cel, doc.width, doc.height, direction === 'undo' ? entry.before : entry.after, entry.region, true)
+      }
       // Show the frame and layer that changed, so the undo is visible.
       if (frameIndex !== -1) set({ frame: frameIndex })
       if (doc.layers.some((l) => l.id === entry.layerId)) set({ layerId: entry.layerId })
     } else {
-      restoreState(doc, direction === 'undo' ? entry.before : entry.after)
+      restoreSnapshot(doc, direction === 'undo' ? entry.before : entry.after)
       const wanted = direction === 'undo' ? entry.layerBefore : entry.layerAfter
       const wantedFrame = direction === 'undo' ? entry.frameBefore : entry.frameAfter
       set({
@@ -252,6 +267,9 @@ export const useStudio = create<StudioState>((set, get) => {
     primary: '#000000',
     secondary: '#ffffff',
     fillShapes: false,
+    brushSize: 1,
+    brushShape: 'square',
+    pixelPerfect: false,
     mirrorX: false,
     mirrorY: false,
     selection: null,
@@ -321,12 +339,24 @@ export const useStudio = create<StudioState>((set, get) => {
       const { doc, frame, layerId } = get()
       const cel = get().activeCel()
       if (!doc || !cel) return () => {}
+      const { width, height } = doc
       const frameId = doc.frames[frame].id
       const before = cel.slice()
       return () => {
-        const after = cel.slice()
-        if (sameBytes(before, after)) return
-        history.push({ kind: 'cels', frameId, layerId, before, after })
+        const region = changedRegion(before, cel, width, height)
+        if (!region) return
+        const bytes = region.w * region.h * 4
+        history.push({
+          kind: 'pixels',
+          frameId,
+          layerId,
+          width,
+          height,
+          region,
+          before: extractRegion(before, width, height, region),
+          after: extractRegion(cel, width, height, region),
+          bytes: bytes * 2
+        })
         set({ canUndo: true, canRedo: false, dirty: true })
       }
     },
@@ -385,6 +415,9 @@ export const useStudio = create<StudioState>((set, get) => {
       set({ dirty: true, version: get().version + 1 })
     },
     toggleFillShapes: () => set({ fillShapes: !get().fillShapes }),
+    setBrushSize: (size) => set({ brushSize: Math.max(1, Math.min(MAX_BRUSH, Math.round(size))), version: get().version + 1 }),
+    setBrushShape: (brushShape) => set({ brushShape, version: get().version + 1 }),
+    togglePixelPerfect: () => set({ pixelPerfect: !get().pixelPerfect }),
     toggleMirrorX: () => set({ mirrorX: !get().mirrorX, version: get().version + 1 }),
     toggleMirrorY: () => set({ mirrorY: !get().mirrorY, version: get().version + 1 }),
 
@@ -485,16 +518,40 @@ export const useStudio = create<StudioState>((set, get) => {
       })
     },
 
+    turn: (kind) => {
+      const doc = get().doc
+      if (!doc || !get().activeCel()) return
+      // With nothing selected, the whole layer turns.
+      const whole = !get().selection
+      if (whole) set({ selection: { x: 0, y: 0, w: doc.width, h: doc.height } })
+      if (!get().floating) get().liftSelection()
+      const f = get().floating
+      if (!f) return
+      const t = turnPixels(f.pixels, f.w, f.h, kind)
+      // Turn about the selection's centre; a 90° turn swaps its width and height.
+      const region = { x: f.x + Math.floor((f.w - t.w) / 2), y: f.y + Math.floor((f.h - t.h) / 2), w: t.w, h: t.h }
+      set({ floating: { ...f, ...region, pixels: t.pixels }, selection: region, version: get().version + 1 })
+      if (whole && t.w === doc.width && t.h === doc.height) {
+        // The layer still fits the canvas exactly, so put it straight back down.
+        get().commitFloating()
+        set({ selection: null, version: get().version + 1 })
+      } else {
+        // Leave it lifted, ready to drag into place.
+        set({ tool: 'select' })
+      }
+    },
+
     insertImage: (image, name) => {
       const { doc, layerId, frame } = get()
       if (!doc) return
       get().commitFloating()
-      const before = cloneState(doc)
+      const before = snapshot(doc)
       const id = addLayer(doc, layerId, name)
       const region = { x: Math.floor((doc.width - image.w) / 2), y: Math.floor((doc.height - image.h) / 2), w: image.w, h: image.h }
       // Placing the pixels finishes the step, so undo takes away the layer and the picture together.
       const done = (): void => {
-        history.push({ kind: 'doc', before, after: cloneState(doc), layerBefore: layerId, layerAfter: id, frameBefore: frame, frameAfter: frame })
+        const after = snapshot(doc)
+        history.push({ kind: 'doc', before, after, layerBefore: layerId, layerAfter: id, frameBefore: frame, frameAfter: frame, bytes: snapshotBytes(before, after) })
         set({ canUndo: true, canRedo: false, dirty: true })
       }
       set({
@@ -536,12 +593,12 @@ export const useStudio = create<StudioState>((set, get) => {
       const { doc, layerId } = get()
       if (!doc) return () => {}
       get().commitFloating()
-      const before = cloneState(doc)
+      const before = snapshot(doc)
       return () => {
-        const after = cloneState(doc)
-        if (sameState(before, after)) return
+        const after = snapshot(doc)
+        if (sameSnapshot(before, after)) return
         const frame = get().frame
-        history.push({ kind: 'doc', before, after, layerBefore: layerId, layerAfter: get().layerId, frameBefore: frame, frameAfter: frame })
+        history.push({ kind: 'doc', before, after, layerBefore: layerId, layerAfter: get().layerId, frameBefore: frame, frameAfter: frame, bytes: snapshotBytes(before, after) })
         set({ canUndo: true, canRedo: false, dirty: true })
       }
     },

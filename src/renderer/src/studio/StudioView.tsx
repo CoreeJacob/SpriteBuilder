@@ -13,8 +13,8 @@ import { Timeline } from './Timeline'
 import { compositeAt, MAX_SIZE } from './model'
 import { PALETTES } from './palettes'
 import { PixelCanvas } from './PixelCanvas'
-import { countColors, rankColors, toHex } from './raster'
-import { fitZoom, SHAPE_TOOLS, useStudio, ZOOM_LEVELS, type Tool } from './store'
+import { countColors, MAX_BRUSH, rankColors, toHex, type Turn } from './raster'
+import { BRUSH_TOOLS, fitZoom, SHAPE_TOOLS, useStudio, ZOOM_LEVELS, type Tool } from './store'
 import { pixelsToCanvas, scaleCanvas } from '@/lib/canvas'
 import { isTyping } from '@/lib/dom'
 
@@ -60,6 +60,14 @@ function CanvasDropZone({ children }: { children: React.ReactNode }) {
     </div>
   )
 }
+
+/** Flips and quarter turns, with the keys that do them (handled in useStudioShortcuts). */
+const TURNS: Array<{ turn: Turn; icon: IconName; label: string; keys: string }> = [
+  { turn: 'flipH', icon: 'flipH', label: 'Flip horizontally', keys: '⇧H' },
+  { turn: 'flipV', icon: 'flipV', label: 'Flip vertically', keys: '⇧V' },
+  { turn: 'rotateCW', icon: 'rotateCW', label: 'Rotate 90° right', keys: '⇧R' },
+  { turn: 'rotateCCW', icon: 'rotateCCW', label: 'Rotate 90° left', keys: '⌥⇧R' }
+]
 
 const PRESETS = [8, 16, 32, 64, 128]
 const EXPORT_SCALES = [1, 2, 4, 8, 16]
@@ -153,6 +161,17 @@ function useStudioShortcuts(openNew: () => void): void {
       }
       if (e.key === 'Escape') return s.deselect()
       if (e.key === 'Enter') return s.commitFloating()
+      // ⇧H/⇧V flip and ⇧R/⌥⇧R turn the selection (or the layer). Key codes, since ⌥ changes the letter.
+      const turn: Turn | null = !e.shiftKey ? null
+        : e.code === 'KeyH' ? 'flipH'
+        : e.code === 'KeyV' ? 'flipV'
+        : e.code === 'KeyR' ? (e.altKey ? 'rotateCCW' : 'rotateCW')
+        : null
+      if (turn) {
+        e.preventDefault()
+        return s.turn(turn)
+      }
+      if (e.key === '[' || e.key === ']') return s.setBrushSize(s.brushSize + (e.key === ']' ? 1 : -1))
       const tool = TOOLS.find((t) => t.key.toLowerCase() === key)
       if (tool) s.setTool(tool.tool)
       else if (key === 'f') s.toggleFillShapes()
@@ -365,6 +384,7 @@ function ToolBox() {
           <button className={`tool ${tool === t.tool ? 'on' : ''}`} onClick={() => setTool(t.tool)} title={`${t.label} (${t.key})`}>
             <Icon name={t.icon} size={20} />
           </button>
+          {t.tool === 'select' && tool === 'select' && <TurnMenu />}
           {t.tool === 'ellipse' && SHAPE_TOOLS.includes(tool) && (
             <button
               className={`tool small ${fillShapes ? 'on' : ''}`}
@@ -376,6 +396,7 @@ function ToolBox() {
           )}
         </div>
       ))}
+      {BRUSH_TOOLS.includes(tool) && <BrushMenu />}
       <div className="color-pair">
         <label className="swatch-big primary" style={{ background: primary }} title={`Front colour ${primary} · left click paints with it`}>
           <input type="color" value={primary.slice(0, 7)} onChange={(e) => setPrimary(e.target.value)} />
@@ -388,6 +409,79 @@ function ToolBox() {
         </button>
       </div>
     </div>
+  )
+}
+
+/** A small toolbox button with a menu that opens to its right. */
+function ToolPopover({ label, title, children }: { label: React.ReactNode; title: string; children: (close: () => void) => React.ReactNode }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="tool-popover">
+      <button className={`tool small ${open ? 'on' : ''}`} onClick={() => setOpen(!open)} title={title}>
+        {label}
+      </button>
+      {open && (
+        <>
+          <div className="menu-scrim" onMouseDown={() => setOpen(false)} />
+          <div className="dropdown">{children(() => setOpen(false))}</div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function BrushMenu() {
+  const size = useStudio((s) => s.brushSize)
+  const shape = useStudio((s) => s.brushShape)
+  const pixelPerfect = useStudio((s) => s.pixelPerfect)
+  const { setBrushSize, setBrushShape, togglePixelPerfect } = useStudio.getState()
+  return (
+    <ToolPopover label={<span className="brush-size">{size}px</span>} title={`Brush: ${size}px ${shape} · [ and ] change the size`}>
+      {() => (
+        <>
+          <div className="dropdown-label">Brush size · [ ]</div>
+          <div className="filter-options">
+            {Array.from({ length: MAX_BRUSH }, (_, i) => i + 1).map((n) => (
+              <button key={n} className={`chip ${size === n ? 'on' : ''}`} onClick={() => setBrushSize(n)}>
+                {n}
+              </button>
+            ))}
+          </div>
+          <div className="dropdown-label">Shape</div>
+          <div className="filter-options">
+            {(['square', 'round'] as const).map((s) => (
+              <button key={s} className={`chip ${shape === s ? 'on' : ''}`} onClick={() => setBrushShape(s)}>
+                {s === 'square' ? 'Square' : 'Round'}
+              </button>
+            ))}
+          </div>
+          <div className="dropdown-sep" />
+          <label className="check" title="Removes the extra corner pixels from jagged freehand lines">
+            <input type="checkbox" checked={pixelPerfect} onChange={togglePixelPerfect} />
+            Pixel-perfect lines
+          </label>
+          <p className="muted small">{size === 1 ? 'Freehand pencil and eraser strokes skip stray corner pixels.' : 'Works with the 1px brush.'}</p>
+        </>
+      )}
+    </ToolPopover>
+  )
+}
+
+function TurnMenu() {
+  const hasSelection = useStudio((s) => s.selection !== null)
+  return (
+    <ToolPopover label={<Icon name="rotateCW" size={14} />} title="Flip or rotate the selection (or the whole layer)">
+      {(close) => (
+        <>
+          <div className="dropdown-label">{hasSelection ? 'Selection' : 'Whole layer'}</div>
+          {TURNS.map((t) => (
+            <button key={t.turn} className="dropdown-item" onClick={() => (useStudio.getState().turn(t.turn), close())}>
+              <Icon name={t.icon} /> {t.label} <span className="muted small menu-keys">{t.keys}</span>
+            </button>
+          ))}
+        </>
+      )}
+    </ToolPopover>
   )
 }
 

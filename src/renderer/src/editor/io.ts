@@ -9,7 +9,8 @@ import { itemUrl } from '@/lib/fileUrl'
 import { confirmDiscard as confirmStudioDiscard } from '@/studio/io'
 import { docFromFrames, MAX_SIZE } from '@/studio/model'
 import { useStudio } from '@/studio/store'
-import { adjust, crop, isIdentity, sliceRects, type Img } from './ops'
+import type { Turn } from '@/studio/raster'
+import { adjust, crop, isIdentity, sliceRects, turnImg, type Img } from './ops'
 import { MAX_EDIT_SIZE, useEditor, type EditorSource } from './store'
 
 const MIME: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp' }
@@ -42,6 +43,13 @@ function currentImage(): Img | null {
 }
 
 /** Folds previewed adjustments into the image so they are saved and undoable. */
+/** Flips or turns the open image (from the Edit menu or ⇧H, ⇧V, ⇧R and ⌥⇧R). */
+export function turnImage(turn: Turn): void {
+  commitAdjustments()
+  const { image, apply } = useEditor.getState()
+  if (image) apply(turnImg(image, turn))
+}
+
 export function commitAdjustments(): void {
   const { image, adjustments, apply, resetAdjustments } = useEditor.getState()
   if (!image || isIdentity(adjustments)) return

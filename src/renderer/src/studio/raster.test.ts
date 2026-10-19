@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
   blitRegion,
+  brushOffsets,
+  brushPoints,
+  changedRegion,
+  isCorner,
+  turnPixels,
   constrainEnd,
   ellipsePoints,
   extractRegion,
@@ -137,5 +142,82 @@ describe('fitWithin', () => {
     expect(fitWithin(10, 40, 16, 16)).toEqual([4, 16])
     expect(fitWithin(8, 8, 16, 16)).toEqual([8, 8])
     expect(fitWithin(1000, 1, 16, 16)).toEqual([16, 1]) // never below one pixel
+  })
+})
+
+describe('changedRegion', () => {
+  it('finds the smallest rectangle around every changed pixel', () => {
+    const a = new Uint8ClampedArray(5 * 4 * 4)
+    const b = a.slice()
+    expect(changedRegion(a, b, 5, 4)).toBeNull()
+    b[(1 * 5 + 3) * 4 + 3] = 255 // (3,1)
+    b[(2 * 5 + 1) * 4] = 7 // (1,2)
+    expect(changedRegion(a, b, 5, 4)).toEqual({ x: 1, y: 1, w: 3, h: 2 })
+  })
+})
+
+describe('turnPixels', () => {
+  // 3×2 image numbered by pixel: 1 2 3 / 4 5 6 (red channel only)
+  const img = new Uint8ClampedArray([1, 2, 3, 4, 5, 6].flatMap((v) => [v, 0, 0, 255]))
+  const reds = (t: { pixels: Uint8ClampedArray }) => Array.from(t.pixels.filter((_, i) => i % 4 === 0))
+
+  it('flips and turns, swapping the size for quarter turns', () => {
+    expect(reds(turnPixels(img, 3, 2, 'flipH'))).toEqual([3, 2, 1, 6, 5, 4])
+    expect(reds(turnPixels(img, 3, 2, 'flipV'))).toEqual([4, 5, 6, 1, 2, 3])
+    expect(reds(turnPixels(img, 3, 2, 'rotate180'))).toEqual([6, 5, 4, 3, 2, 1])
+    const cw = turnPixels(img, 3, 2, 'rotateCW')
+    expect([cw.w, cw.h]).toEqual([2, 3])
+    expect(reds(cw)).toEqual([4, 1, 5, 2, 6, 3])
+    expect(reds(turnPixels(img, 3, 2, 'rotateCCW'))).toEqual([3, 6, 2, 5, 1, 4])
+  })
+
+  it('four quarter turns get back to the start', () => {
+    let t = { w: 3, h: 2, pixels: img }
+    for (let i = 0; i < 4; i++) t = turnPixels(t.pixels, t.w, t.h, 'rotateCW')
+    expect(Array.from(t.pixels)).toEqual(Array.from(img))
+  })
+})
+
+describe('brushes', () => {
+  const draw = (offsets: Array<[number, number]>, size: number) => {
+    const rows: string[] = []
+    const start = -Math.floor((size - 1) / 2)
+    for (let y = start; y < start + size; y++) {
+      let row = ''
+      for (let x = start; x < start + size; x++) row += offsets.some(([dx, dy]) => dx === x && dy === y) ? '#' : '.'
+      rows.push(row)
+    }
+    return rows
+  }
+
+  it('square brushes cover the whole square; even sizes reach right and down', () => {
+    expect(brushOffsets(1, 'square')).toEqual([[0, 0]])
+    expect(brushOffsets(2, 'square')).toEqual([[0, 0], [1, 0], [0, 1], [1, 1]])
+    expect(brushOffsets(3, 'square')).toHaveLength(9)
+    expect(brushOffsets(3, 'square')[0]).toEqual([-1, -1])
+  })
+
+  it('round brushes drop the corners', () => {
+    expect(draw(brushOffsets(3, 'round'), 3)).toEqual(['.#.', '###', '.#.'])
+    expect(draw(brushOffsets(4, 'round'), 4)).toEqual(['.##.', '####', '####', '.##.'])
+    expect(draw(brushOffsets(5, 'round'), 5)).toEqual(['.###.', '#####', '#####', '#####', '.###.'])
+  })
+
+  it('stamps along a path, each pixel once', () => {
+    expect(brushPoints([[5, 5]], 1, 'square')).toEqual([[5, 5]])
+    const line = brushPoints([[0, 0], [1, 0]], 2, 'square')
+    expect(line).toHaveLength(6) // a 3×2 block, the shared column counted once
+  })
+})
+
+describe('isCorner (pixel-perfect)', () => {
+  it('spots the inside corner of an L step', () => {
+    expect(isCorner([0, 0], [1, 0], [1, 1])).toBe(true)
+    expect(isCorner([0, 0], [0, 1], [1, 1])).toBe(true)
+  })
+  it('leaves straight runs and true diagonals alone', () => {
+    expect(isCorner([0, 0], [1, 0], [2, 0])).toBe(false)
+    expect(isCorner([0, 0], [1, 1], [2, 2])).toBe(false)
+    expect(isCorner([0, 0], [1, 0], [2, 1])).toBe(false)
   })
 })
