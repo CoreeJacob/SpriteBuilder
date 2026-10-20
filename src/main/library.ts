@@ -25,6 +25,7 @@ import {
   type ComputedMeta,
   type EditableMeta,
   type ImportedFile,
+  type ImportResult,
   type LibraryItem,
   type LibrarySnapshot,
   type PathMove,
@@ -39,6 +40,8 @@ const MAX_FRAME_SCAN_BYTES = 50 * 1024 * 1024
 const OWN_CHANGE_GRACE_MS = 1000
 
 interface StoredMeta extends EditableMeta {
+  /** The file's identity on disk (inode), which survives moves and renames in Finder. */
+  ino?: string
   addedAt: number
   size: number
   modifiedAt: number
@@ -51,6 +54,41 @@ interface StoredMeta extends EditableMeta {
 interface IndexFile {
   version: 1
   items: Record<string, StoredMeta>
+}
+
+/** Copies can round a file's modified time (FAT and exFAT drives keep it to 2 seconds). */
+const TIME_SLACK_MS = 2000
+
+/** A file the scan found with no details recorded for its path. */
+interface Arrival {
+  rel: string
+  ino: string
+  size: number
+  modifiedAt: number
+}
+
+/**
+ * Pairs files that disappeared from the index with files that appeared, when they're clearly
+ * the same file moved or renamed outside the app: the same identity on disk (and type), or
+ * failing that (copied to another drive, say) the same name and size, and nearly the same modified time.
+ */
+export function matchMoves(vanished: Array<[string, StoredMeta]>, arrivals: Arrival[]): PathMove[] {
+  const left = new Map(vanished)
+  const moves: PathMove[] = []
+  const take = (to: string, test: (from: string, meta: StoredMeta) => boolean): boolean => {
+    for (const [from, meta] of left) {
+      if (!test(from, meta)) continue
+      left.delete(from)
+      moves.push({ from, to })
+      return true
+    }
+    return false
+  }
+  for (const a of arrivals) {
+    take(a.rel, (from, m) => m.ino === a.ino && extOf(from) === extOf(a.rel)) ||
+      take(a.rel, (from, m) => basenameRel(from) === basenameRel(a.rel) && m.size === a.size && Math.abs(m.modifiedAt - a.modifiedAt) <= TIME_SLACK_MS)
+  }
+  return moves
 }
 
 const isImage = (name: string): boolean =>
@@ -171,17 +209,27 @@ export class Library {
 
   // ---------- items ----------
 
-  importFiles(destFolder: string, absolutePaths: string[]): Promise<string[]> {
+  /**
+   * Copies image files in. Files that are already in this library (dragged out of a thumbnail
+   * and dropped back on a folder) are moved instead, keeping their details.
+   */
+  importFiles(destFolder: string, absolutePaths: string[]): Promise<ImportResult> {
     return this.mutate(async () => {
-      const added: string[] = []
+      const result: ImportResult = { imported: [], moved: [], unchanged: [] }
       for (const source of absolutePaths) {
         const name = path.basename(source)
         if (!isImage(name)) continue
+        const own = await this.ownPath(source)
+        if (own) {
+          const target = await this.moveInto(own, destFolder)
+          result[target === own ? 'unchanged' : 'moved'].push(target)
+          continue
+        }
         const rel = await this.freePath(destFolder, name)
         await fs.copyFile(source, this.abs(rel))
-        added.push(rel)
+        result.imported.push(rel)
       }
-      return added
+      return result
     })
   }
 
@@ -201,17 +249,26 @@ export class Library {
   moveItems(paths: string[], destFolder: string): Promise<string[]> {
     return this.mutate(async () => {
       const moved: string[] = []
-      for (const rel of paths) {
-        if (dirnameRel(rel) === destFolder) {
-          moved.push(rel)
-          continue
-        }
-        const target = await this.freePath(destFolder, basenameRel(rel))
-        await this.moveWithProject(rel, target)
-        moved.push(target)
-      }
+      for (const rel of paths) moved.push(await this.moveInto(rel, destFolder))
       return moved
     })
+  }
+
+  /** Moves one item (and its sprite project) into a folder; returns where it ended up. */
+  private async moveInto(rel: string, destFolder: string): Promise<string> {
+    if (dirnameRel(rel) === destFolder) return rel
+    const target = await this.freePath(destFolder, basenameRel(rel))
+    await this.moveWithProject(rel, target)
+    return target
+  }
+
+  /** The library path of an absolute file path, if that file is one of this library's items. */
+  private async ownPath(absolute: string): Promise<string | null> {
+    const real = await fs.realpath(absolute).catch(() => path.resolve(absolute))
+    const root = await fs.realpath(this.root).catch(() => this.root)
+    if (!real.startsWith(root + path.sep)) return null
+    const rel = real.slice(root.length + 1).split(path.sep).join('/')
+    return this.index.items[rel] ? rel : null
   }
 
   renameItem(rel: string, newName: string): Promise<string> {
@@ -477,19 +534,32 @@ export class Library {
     await walk('')
 
     let changed = false
-    const seen = new Set<string>()
     const items: LibraryItem[] = []
-
+    const found = new Map<string, Arrival & { addedAt: number }>()
     for (const rel of images) {
-      const stat = await fs.stat(this.abs(rel)).catch(() => null)
+      // Inode numbers can be larger than a JavaScript number holds, so they're read as bigints.
+      const stat = await fs.stat(this.abs(rel), { bigint: true }).catch(() => null)
       if (!stat) continue
-      seen.add(rel)
-      const size = stat.size
-      const modifiedAt = Math.round(stat.mtimeMs)
+      const birth = Number(stat.birthtimeMs)
+      found.set(rel, { rel, ino: String(stat.ino), size: Number(stat.size), modifiedAt: Math.round(Number(stat.mtimeMs)), addedAt: Math.round(birth || Date.now()) })
+    }
+
+    // Files moved or renamed in Finder keep their tags, notes and favourite.
+    const vanished = Object.entries(this.index.items).filter(([rel]) => !found.has(rel))
+    const arrivals = [...found.values()].filter((f) => !this.index.items[f.rel])
+    for (const move of matchMoves(vanished, arrivals)) {
+      this.index.items[move.to] = this.index.items[move.from]
+      delete this.index.items[move.from]
+      this.pendingMoves.push(move) // so open documents follow, as with moves made in the app
+      changed = true
+    }
+
+    for (const { rel, ino, size, modifiedAt, addedAt } of found.values()) {
       let meta = this.index.items[rel]
       if (!meta) {
         meta = {
-          addedAt: Math.round(stat.birthtimeMs || Date.now()),
+          ino,
+          addedAt,
           tags: [],
           favorite: false,
           rating: 0,
@@ -508,6 +578,10 @@ export class Library {
         Object.assign(meta, { size, modifiedAt, width: null, height: null, frames: null, colorCount: null })
         changed = true
       }
+      if (meta.ino !== ino) {
+        meta.ino = ino // older index files didn't record it
+        changed = true
+      }
       const project = projectOf(rel)
       const hasProject = project !== null && projects.has(project.toLowerCase())
       if (meta.frames === null && size <= MAX_FRAME_SCAN_BYTES) {
@@ -523,7 +597,7 @@ export class Library {
     }
 
     for (const rel of Object.keys(this.index.items)) {
-      if (!seen.has(rel)) {
+      if (!found.has(rel)) {
         delete this.index.items[rel]
         changed = true
       }

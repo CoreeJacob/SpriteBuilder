@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { app, BrowserWindow, dialog, ipcMain, Menu, net, protocol, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, protocol, shell } from 'electron'
 import { basenameRel, withSheetImage } from '@shared/paths'
 import {
   IMAGE_EXTENSIONS,
@@ -250,7 +250,7 @@ function registerIpc(): void {
         properties: ['openFile', 'multiSelections'],
         filters: [{ name: 'Images', extensions: [...IMAGE_EXTENSIONS] }]
       })
-      if (result.canceled) return []
+      if (result.canceled) return { imported: [], moved: [], unchanged: [] }
       paths = result.filePaths
     }
     return lib().importFiles(dest, paths)
@@ -265,6 +265,15 @@ function registerIpc(): void {
   handle('items:setComputed', (entries: ComputedMeta[]) => lib().setComputedMeta(entries))
   handle('items:replace', (p: string, data: Uint8Array) => lib().replaceItem(p, data))
   handle('items:reveal', (p: string) => shell.showItemInFolder(lib().abs(p)))
+  // Must answer the drag straight away (while the mouse button is still down), so it isn't a handle().
+  ipcMain.on('items:startDrag', (event, paths: string[]) => {
+    const files = paths.map((p) => lib().abs(p))
+    if (!files.length) return
+    // The drag picture is the first image; types macOS can't preview get a generic file icon.
+    const picture = nativeImage.createFromPath(files[0])
+    const icon = picture.isEmpty() ? nativeImage.createFromNamedImage('NSImageNameMultipleDocuments') : picture.resize({ height: 64 })
+    event.sender.startDrag({ file: files[0], files, icon })
+  })
   handle('items:export', async (p: string) => {
     const result = await dialog.showSaveDialog(mainWindow!, { defaultPath: basenameRel(p) })
     if (result.canceled || !result.filePath) return null

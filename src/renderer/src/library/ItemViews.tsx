@@ -6,7 +6,6 @@ import { itemUrl } from '@/lib/fileUrl'
 import { formatBytes, formatDate, formatDimensions } from '@/lib/format'
 import { openInStudio } from '@/studio/io'
 import type { FolderGroup, SortKey } from './filter'
-import { ITEM_DRAG_TYPE } from './FolderSidebar'
 import { useItemMenu } from './ItemMenu'
 
 interface ViewProps {
@@ -77,12 +76,16 @@ function useSelection(items: LibraryItem[]) {
     }
   }
 
+  /**
+   * Dragging hands the files to macOS as a real file drag: they can go to Finder, the Desktop or
+   * another app, and dropping them on a library folder moves them there.
+   */
   const onDragStart = (e: DragEvent, item: LibraryItem): void => {
+    e.preventDefault()
     // Dragging an unselected item drags just that item.
     const paths = chosen.has(item.path) ? selection : [item.path]
     if (!chosen.has(item.path)) select([item.path])
-    e.dataTransfer.setData(ITEM_DRAG_TYPE, JSON.stringify(paths))
-    e.dataTransfer.effectAllowed = 'move'
+    window.api.startDrag(paths)
   }
 
   return { chosen, onClick, onDragStart }

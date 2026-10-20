@@ -30,6 +30,7 @@ const api: SpriteBuilderApi = {
   editTags: (paths, add, remove) => ipcRenderer.invoke('items:editTags', paths, add, remove),
   setComputedMeta: (entries) => ipcRenderer.invoke('items:setComputed', entries),
   revealItem: (path) => ipcRenderer.invoke('items:reveal', path),
+  startDrag: (paths) => ipcRenderer.send('items:startDrag', paths),
   exportItem: (path) => ipcRenderer.invoke('items:export', path),
 
   readProject: (path) => ipcRenderer.invoke('sprite:readProject', path),

@@ -1,6 +1,7 @@
 // Whole-library actions: backing up, restoring and switching library folders.
 
-import type { LibrarySnapshot } from '@shared/types'
+import { basenameRel } from '@shared/paths'
+import type { ImportResult, LibrarySnapshot } from '@shared/types'
 import { formatBytes } from '@/lib/format'
 import { syncOpenDocuments } from './openDocuments'
 import { attempt, useApp } from './store'
@@ -11,6 +12,22 @@ function switchLibrary(snapshot: LibrarySnapshot): void {
   app.setScope({ kind: 'all' })
   app.setLibrary(snapshot)
   syncOpenDocuments(snapshot)
+}
+
+/** "hero.png" for one image, "3 images" for more. */
+const images = (paths: string[]): string => (paths.length === 1 ? basenameRel(paths[0]) : `${paths.length} images`)
+
+/** Says what an import or drop did and selects the results. `quietIfNone` for a cancelled dialog. */
+export function reportImport({ imported, moved, unchanged }: ImportResult, folder: string, quietIfNone = false): void {
+  const app = useApp.getState()
+  if (!imported.length && !moved.length) {
+    // Dropping images back where they already are does nothing, and needs no message.
+    if (!quietIfNone && !unchanged.length) app.notify('Nothing imported. Supported types are PNG, JPG, GIF, WebP, SVG and BMP.', 'error')
+    return
+  }
+  app.select([...imported, ...moved])
+  const done = [imported.length && `Imported ${images(imported)}`, moved.length && `Moved ${images(moved)}`].filter(Boolean)
+  app.notify(`${done.join(' and ')} into ${folder || 'Library'}`)
 }
 
 export async function backupLibrary(): Promise<void> {

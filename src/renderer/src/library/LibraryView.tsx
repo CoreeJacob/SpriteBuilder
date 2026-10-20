@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type DragEvent } from 'react'
 import { basenameRel } from '@shared/paths'
 import type { ImportedFile } from '@shared/types'
 import { Icon } from '@/app/Icon'
+import { reportImport } from '@/app/libraryActions'
 import { attempt, useApp } from '@/app/store'
 import { formatBytes } from '@/lib/format'
 import { confirmDelete, DetailPanel } from './DetailPanel'
@@ -58,32 +59,21 @@ export function LibraryView() {
   const tags = useMemo(() => collectTags(library?.items ?? []), [library])
   const destFolder = scope.kind === 'folder' ? scope.path : ''
 
-  const report = (added: string[] | undefined, quietIfNone = false): void => {
-    if (!added) return
-    if (added.length === 0) {
-      if (!quietIfNone) {
-        useApp.getState().notify('Nothing imported. Supported types are PNG, JPG, GIF, WebP, SVG and BMP.', 'error')
-      }
-      return
-    }
-    useApp.getState().select(added)
-    useApp.getState().notify(`Imported ${added.length} image${added.length === 1 ? '' : 's'}`)
-  }
-
   const importInto = async (files: ImportedFile[] | string[]): Promise<void> => {
     if (!files.length) return
-    report(
-      await attempt(() =>
-        typeof files[0] === 'string'
-          ? window.api.importFiles(destFolder, files as string[])
-          : window.api.importData(destFolder, files as ImportedFile[])
-      )
+    const result = await attempt(async () =>
+      typeof files[0] === 'string'
+        ? window.api.importFiles(destFolder, files as string[])
+        : { imported: await window.api.importData(destFolder, files as ImportedFile[]), moved: [], unchanged: [] }
     )
+    if (result) reportImport(result, destFolder)
   }
 
   // Cancelling the Open dialog also returns no files, so stay quiet in that case.
-  const importWithDialog = async (): Promise<void> =>
-    report(await attempt(() => window.api.importFiles(destFolder)), true)
+  const importWithDialog = async (): Promise<void> => {
+    const result = await attempt(() => window.api.importFiles(destFolder))
+    if (result) reportImport(result, destFolder, true)
+  }
 
   // Paste an image from the clipboard (e.g. a screenshot) into the current folder.
   useEffect(() => {
@@ -194,7 +184,7 @@ export function LibraryView() {
           ) : (
             <ItemList items={items} groups={groups} openFolder={openFolder} />
           )}
-          {dropping && <div className="drop-overlay">Drop to import into “{destFolder || 'Library'}”</div>}
+          {dropping && <div className="drop-overlay">Drop to add to “{destFolder || 'Library'}”</div>}
         </div>
         <footer className="statusbar">
           <span>

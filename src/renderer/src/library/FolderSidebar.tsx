@@ -1,30 +1,26 @@
 import { useCallback, useMemo, useState, type DragEvent } from 'react'
 import { basenameRel, dirnameRel, isInside } from '@shared/paths'
 import { ContextMenu, type MenuEntry, type MenuRequest } from '@/app/ContextMenu'
-import { backupLibrary, changeLibraryFolder, restoreLibrary } from '@/app/libraryActions'
+import { backupLibrary, changeLibraryFolder, reportImport, restoreLibrary } from '@/app/libraryActions'
 import { Icon } from '@/app/Icon'
 import { attempt, useApp } from '@/app/store'
 import type { Scope } from './filter'
 
-export const ITEM_DRAG_TYPE = 'application/x-spritebuilder-items'
-
-/** Handlers that let a sidebar entry accept library items dragged onto it. */
 const FOLDER_DRAG_TYPE = 'application/x-spritebuilder-folder'
 
 /** The folder being dragged. Drag data can't be read during dragover, so it's kept here too. */
 let draggedFolder: string | null = null
 
 /**
- * Lets a sidebar entry accept drops: library images (moved here), other folders (moved
- * inside this one) and files from Finder (imported here).
+ * Lets a sidebar entry accept drops: other folders (moved inside this one) and files, which are
+ * imported, or moved here if they're the library's own images (dragged from a thumbnail).
  */
 function useDropTarget(folder: string | null) {
   const [over, setOver] = useState(false)
   if (folder === null) return { over: false, handlers: {} }
 
-  const kind = (e: DragEvent): 'items' | 'folder' | 'files' | null => {
+  const kind = (e: DragEvent): 'folder' | 'files' | null => {
     const types = e.dataTransfer.types
-    if (types.includes(ITEM_DRAG_TYPE)) return 'items'
     if (types.includes(FOLDER_DRAG_TYPE)) {
       // A folder can't go inside itself or stay where it is.
       const source = draggedFolder
@@ -52,14 +48,7 @@ function useDropTarget(folder: string | null) {
         e.preventDefault()
         const app = useApp.getState()
         const where = folder || 'Library'
-        if (k === 'items') {
-          const paths: string[] = JSON.parse(e.dataTransfer.getData(ITEM_DRAG_TYPE))
-          void attempt(async () => {
-            const moved = await window.api.moveItems(paths, folder)
-            app.select(moved)
-            app.notify(`Moved ${moved.length} item${moved.length === 1 ? '' : 's'} to ${where}`)
-          })
-        } else if (k === 'folder') {
+        if (k === 'folder') {
           const source = e.dataTransfer.getData(FOLDER_DRAG_TYPE)
           void attempt(async () => {
             await window.api.moveFolder(source, folder)
@@ -68,11 +57,7 @@ function useDropTarget(folder: string | null) {
         } else {
           const paths = [...e.dataTransfer.files].map((f) => window.api.getPathForFile(f)).filter(Boolean)
           if (!paths.length) return
-          void attempt(async () => {
-            const added = await window.api.importFiles(folder, paths)
-            if (added.length) app.notify(`Imported ${added.length} image${added.length === 1 ? '' : 's'} into ${where}`)
-            else app.notify('Nothing imported. Supported types are PNG, JPG, GIF, WebP, SVG and BMP.', 'error')
-          })
+          void attempt(async () => reportImport(await window.api.importFiles(folder, paths), folder))
         }
       }
     }

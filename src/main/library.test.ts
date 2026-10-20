@@ -17,7 +17,7 @@ vi.mock('electron', () => ({
   }
 }))
 
-const { Library } = await import('./library')
+const { Library, matchMoves } = await import('./library')
 
 // A valid 1×1 PNG, plus a 2-frame GIF.
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==', 'base64')
@@ -346,5 +346,120 @@ describe('bulk tags', () => {
     await lib.editTags(['a.png', 'b.png'], ['sprite', ' sprite '], ['old'])
     expect(item('a.png')?.tags).toEqual(['hero', 'sprite'])
     expect(item('b.png')?.tags).toEqual(['enemy', 'sprite'])
+  })
+})
+
+describe('files moved or renamed outside the app (e.g. in Finder)', () => {
+  const finderMove = async (from: string, to: string): Promise<void> => {
+    await fs.mkdir(path.dirname(path.join(root, to)), { recursive: true })
+    await fs.rename(path.join(root, from), path.join(root, to))
+  }
+  const until = async (ok: () => boolean): Promise<void> => {
+    for (let i = 0; i < 40 && !ok(); i++) await new Promise((r) => setTimeout(r, 100))
+  }
+
+  it('keeps tags, favourite and notes when a file is moved and renamed while the app is closed', async () => {
+    await write('hero.png')
+    await open()
+    await lib.updateMeta(['hero.png'], { tags: ['player'], favorite: true, notes: 'main character' })
+    lib.close()
+    await finderMove('hero.png', 'Heroes/knight.png')
+    await open()
+    expect(names()).toEqual(['Heroes/knight.png'])
+    expect(item('Heroes/knight.png')).toMatchObject({ tags: ['player'], favorite: true, notes: 'main character' })
+  })
+
+  it('notices a move made while the app is running, and announces it so open documents follow', async () => {
+    await write('hero.png')
+    await open()
+    await lib.updateMeta(['hero.png'], { tags: ['player'] })
+    const updates: LibrarySnapshot[] = []
+    lib.close()
+    lib = await Library.open(root, (s) => (updates.push(s), (snapshot = s)))
+    await new Promise((r) => setTimeout(r, 1100)) // past the app's own-change grace period
+    await finderMove('hero.png', 'renamed.png')
+    await until(() => !!item('renamed.png'))
+    expect(item('renamed.png')?.tags).toEqual(['player'])
+    expect(updates.flatMap((u) => u.moved ?? [])).toEqual([{ from: 'hero.png', to: 'renamed.png' }])
+  })
+
+  it('falls back to the same name, size and time when the file’s identity changed (copied to another drive)', async () => {
+    await write('hero.png')
+    await open()
+    await lib.updateMeta(['hero.png'], { tags: ['player'] })
+    lib.close()
+    // A copy-then-delete: a new file on disk, but Finder keeps the modified time.
+    const { mtime, atime } = await fs.stat(path.join(root, 'hero.png'))
+    await fs.mkdir(path.join(root, 'Heroes'))
+    await fs.copyFile(path.join(root, 'hero.png'), path.join(root, 'Heroes/hero.png'))
+    await fs.utimes(path.join(root, 'Heroes/hero.png'), atime, mtime)
+    await fs.rm(path.join(root, 'hero.png'))
+    await open()
+    expect(item('Heroes/hero.png')?.tags).toEqual(['player'])
+  })
+
+  it('never hands one file’s details to a different new file', async () => {
+    await write('hero.png')
+    await open()
+    await lib.updateMeta(['hero.png'], { tags: ['player'] })
+    lib.close()
+    await fs.rm(path.join(root, 'hero.png'))
+    await write('other.png', GIF) // different name, size and identity
+    await open()
+    expect(item('other.png')?.tags).toEqual([])
+  })
+
+  it('libraries saved before identity numbers were kept pick them up, then follow moves', async () => {
+    await write('hero.png')
+    await open()
+    await lib.updateMeta(['hero.png'], { tags: ['player'] })
+    lib.close()
+    // Remove the identity numbers, as in an older index file.
+    const indexFile = path.join(root, '.spritebuilder/library.json')
+    const index = JSON.parse(await fs.readFile(indexFile, 'utf8'))
+    for (const meta of Object.values(index.items) as Array<{ ino?: string }>) delete meta.ino
+    await fs.writeFile(indexFile, JSON.stringify(index))
+    await open()
+    lib.close()
+    expect(JSON.parse(await fs.readFile(indexFile, 'utf8')).items['hero.png'].ino).toBeTruthy()
+    await finderMove('hero.png', 'zz/renamed.png')
+    await open()
+    expect(item('zz/renamed.png')?.tags).toEqual(['player'])
+  })
+
+  it('matches by identity first, never across file types, and not when changed much later', () => {
+    const meta = (ino: string, size = 10, modifiedAt = 5) =>
+      ({ ino, size, modifiedAt, tags: [], favorite: false, rating: 0, notes: '', addedAt: 0, width: null, height: null, frames: null, colorCount: null })
+    const moves = matchMoves(
+      [['a.png', meta('1')], ['b.png', meta('2')], ['c.png', meta('3')]],
+      [
+        { rel: 'x/b.png', ino: '1', size: 10, modifiedAt: 5 }, // same identity as a.png beats b.png's matching name
+        { rel: 'c.gif', ino: '3', size: 1, modifiedAt: 1 }, // same identity, but a different type: not the same file
+        { rel: 'y/c.png', ino: '9', size: 10, modifiedAt: 2500 } // same name and size, but changed long after: a different file
+      ]
+    )
+    expect(moves).toEqual([{ from: 'a.png', to: 'x/b.png' }])
+  })
+})
+
+describe('dropping files on a folder', () => {
+  it('moves the library’s own files (dragged out of a thumbnail) instead of copying them', async () => {
+    await write('hero.png')
+    await write('Heroes/.keep', '')
+    await open()
+    await lib.updateMeta(['hero.png'], { tags: ['player'] })
+    const outside = path.join(os.tmpdir(), `spritebuilder-outside-${Date.now()}.png`)
+    await fs.writeFile(outside, PNG)
+    try {
+      const result = await lib.importFiles('Heroes', [path.join(root, 'hero.png'), outside])
+      expect(result.moved).toEqual(['Heroes/hero.png'])
+      expect(result.imported).toHaveLength(1)
+      expect(await exists('hero.png')).toBe(false)
+      expect(item('Heroes/hero.png')?.tags).toEqual(['player'])
+      // Dropped back on the folder it's already in: nothing happens.
+      expect(await lib.importFiles('Heroes', [path.join(root, 'Heroes/hero.png')])).toEqual({ imported: [], moved: [], unchanged: ['Heroes/hero.png'] })
+    } finally {
+      await fs.rm(outside, { force: true })
+    }
   })
 })

@@ -52,6 +52,14 @@ export interface LibrarySnapshot {
   moved?: PathMove[]
 }
 
+/** What a drop or import did: files copied in, and the library's own files moved. */
+export interface ImportResult {
+  imported: string[]
+  moved: string[]
+  /** The library's own files dropped back on the folder they were already in. */
+  unchanged: string[]
+}
+
 export interface ImportedFile {
   name: string
   data: Uint8Array
@@ -86,7 +94,7 @@ export interface SpriteBuilderApi {
   deleteFolder(path: string): Promise<void>
 
   /** Copies files into the library. With no paths, shows an Open dialog first. */
-  importFiles(destFolder: string, absolutePaths?: string[]): Promise<string[]>
+  importFiles(destFolder: string, absolutePaths?: string[]): Promise<ImportResult>
   importData(destFolder: string, files: ImportedFile[]): Promise<string[]>
   moveItems(paths: string[], destFolder: string): Promise<string[]>
   renameItem(path: string, newName: string): Promise<string>
@@ -99,6 +107,8 @@ export interface SpriteBuilderApi {
   editTags(paths: string[], add: string[], remove: string[]): Promise<void>
   setComputedMeta(entries: ComputedMeta[]): Promise<void>
   revealItem(path: string): Promise<void>
+  /** Starts a real file drag of these library items, so they can be dropped in Finder or other apps. */
+  startDrag(paths: string[]): void
   exportItem(path: string): Promise<string | null>
 
   readProject(imagePath: string): Promise<string | null>
