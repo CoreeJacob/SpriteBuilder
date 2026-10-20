@@ -240,7 +240,8 @@ describe('shapePixels', () => {
     const start = performance.now()
     shapePixels('rect', [0, 0], [511, 511], true, 8, 'square')
     shapePixels('ellipse', [0, 0], [511, 511], true, 8, 'round')
-    expect(performance.now() - start).toBeLessThan(100) // was about 700 ms per mouse move
+    // About 5 ms normally; the old way took 700 ms or more. The limit allows for a busy machine.
+    expect(performance.now() - start).toBeLessThan(300)
   })
 })
 

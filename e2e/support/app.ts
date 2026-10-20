@@ -143,9 +143,12 @@ export class App {
     return this.until(() => this.js<T>(expr), timeout)
   }
 
-  /** Lets React finish updating and the canvas redraw (two animation frames). */
+  /**
+   * Lets the page finish reacting to an input: waits for a frame, then until the page has no work
+   * left (React's updates and the canvas redraw run first, however busy the Mac is), then a frame.
+   */
   settle(): Promise<void> {
-    return this.js(`new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r(1))))`)
+    return this.js(`new Promise(r => requestAnimationFrame(() => requestIdleCallback(() => requestAnimationFrame(() => r(1)), { timeout: 1000 })))`)
   }
 
   // ---------- mouse and keyboard ----------
@@ -219,17 +222,25 @@ export class App {
   async closeMenu(): Promise<void> {
     await this.js(`document.querySelector('.menu-scrim')?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); 1`)
     await this.settle()
+    // When the menu's backdrop disappears under the (still) mouse, Chromium sends a made-up mouse
+    // move shortly after to refresh hover effects, sometimes with an out-of-date position. Let it
+    // pass before the next drag, or it lands in the middle of that drag as a stray step.
+    await this.wait(150)
+    await this.settle()
   }
 
   // ---------- Pixel Studio ----------
 
   private geo = { left: 0, top: 0, zoom: 1 }
+  /** The sprite's size in pixels, from the last regeo(); actions re-measure the canvas with it. */
+  private size = 16
 
   /**
    * Re-reads where the sprite canvas is on screen; call after it changes size or moves.
    * Waits until it has stopped moving (it settles into place a moment after it appears).
    */
   async regeo(size: number): Promise<void> {
+    this.size = size
     this.geo = await this.untilJs(`(async () => {
       const box = () => { const r = document.querySelector('.pixel-canvas')?.getBoundingClientRect(); return r ? [r.left, r.top, r.width].join() : '' }
       const first = box()
@@ -248,7 +259,7 @@ export class App {
     return [this.geo.left + x * this.geo.zoom, this.geo.top + y * this.geo.zoom]
   }
 
-  /** Presses at one window point, moves through the others and lets go there. */
+  /** Presses at one window point, moves through the others and lets go there. Measure the points just before. */
   async drag(points: Point[], modifiers = 0): Promise<void> {
     await this.mouse('mouseMoved', points[0], { buttons: 0 })
     await this.mouse('mousePressed', points[0], { modifiers })
@@ -257,9 +268,21 @@ export class App {
     await this.settle()
   }
 
+  /** Re-reads the canvas position before an action (the layout around it can shift a little). */
+  async remeasure(): Promise<void> {
+    this.geo = await this.js(
+      `(() => { const r = document.querySelector('.pixel-canvas').getBoundingClientRect(); return { left: r.left, top: r.top, zoom: r.width / ${this.size} } })()`
+    )
+  }
+
   async dragCells(from: Point, to: Point, modifiers = 0): Promise<void> {
+    await this.remeasure()
     await this.mouse('mousePressed', this.cell(...from), { modifiers })
     await this.mouse('mouseMoved', this.cell(((from[0] + to[0]) / 2) | 0, ((from[1] + to[1]) / 2) | 0), { modifiers })
+    await this.mouse('mouseMoved', this.cell(...to), { modifiers })
+    // Say where the pointer is once more just before letting go, in case a made-up hover move
+    // with an old position slipped in (see closeMenu); shapes and selections use the last position.
+    await this.settle()
     await this.mouse('mouseMoved', this.cell(...to), { modifiers })
     await this.mouse('mouseReleased', this.cell(...to), { modifiers })
     await this.settle()
@@ -271,9 +294,8 @@ export class App {
 
   /** The colour shown at a sprite pixel, like '#ff0000', or 'empty'. */
   px(x: number, y: number): Promise<string> {
-    const { zoom } = this.geo
     return this.js(
-      `(() => { const c = document.querySelector('.pixel-canvas'); const d = devicePixelRatio; const r = c.getContext('2d').getImageData(Math.round((${(x + 0.5) * zoom}) * d), Math.round((${(y + 0.5) * zoom}) * d), 1, 1).data; return r[3] === 0 ? 'empty' : '#' + [r[0], r[1], r[2]].map(v => v.toString(16).padStart(2, '0')).join('') })()`
+      `(() => { const c = document.querySelector('.pixel-canvas'); const z = c.getBoundingClientRect().width / ${this.size}; const d = devicePixelRatio; const r = c.getContext('2d').getImageData(Math.round((${x + 0.5}) * z * d), Math.round((${y + 0.5}) * z * d), 1, 1).data; return r[3] === 0 ? 'empty' : '#' + [r[0], r[1], r[2]].map(v => v.toString(16).padStart(2, '0')).join('') })()`
     )
   }
 

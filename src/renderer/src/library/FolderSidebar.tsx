@@ -4,6 +4,7 @@ import { ContextMenu, type MenuEntry, type MenuRequest } from '@/app/ContextMenu
 import { backupLibrary, changeLibraryFolder, reportImport, restoreLibrary } from '@/app/libraryActions'
 import { Icon } from '@/app/Icon'
 import { attempt, useApp } from '@/app/store'
+import { AtlasDialog } from './AtlasDialog'
 import type { Scope } from './filter'
 
 const FOLDER_DRAG_TYPE = 'application/x-spritebuilder-folder'
@@ -70,6 +71,8 @@ export function FolderSidebar() {
   const setScope = useApp((s) => s.setScope)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [menu, setMenu] = useState<MenuRequest | null>(null)
+  /** The folder being packed into an atlas, while its dialog is open. */
+  const [packing, setPacking] = useState<string | null>(null)
   const closeMenu = useCallback(() => setMenu(null), [])
 
   const counts = useMemo(() => {
@@ -136,6 +139,8 @@ export function FolderSidebar() {
       ? ([{ label: 'Rename…', icon: 'rename', onSelect: () => void renameFolder(folder) }] satisfies MenuEntry[])
       : []),
     { label: 'Show in Finder', icon: 'reveal', onSelect: () => void attempt(() => window.api.revealItem(folder)) },
+    'separator',
+    { label: 'Pack into Atlas…', icon: 'grid', onSelect: () => setPacking(folder) },
     ...(folder
       ? (['separator', { label: 'Move to Trash', icon: 'trash', danger: true, onSelect: () => void deleteFolder(folder) }] satisfies MenuEntry[])
       : [])
@@ -231,6 +236,7 @@ export function FolderSidebar() {
       </div>
 
       {menu && <ContextMenu menu={menu} onClose={closeMenu} />}
+      {packing !== null && <AtlasDialog folder={packing} onClose={() => setPacking(null)} />}
     </aside>
   )
 }

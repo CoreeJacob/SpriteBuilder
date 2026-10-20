@@ -325,13 +325,15 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
 
   /** Puts pixels back to how they were in `base` (pixel-perfect takes back corner pixels). */
   const unplot = (points: Cell[], base: Uint8ClampedArray): void => {
-    const cel = useStudio.getState().activeCel()
+    const s = useStudio.getState()
+    const cel = s.activeCel()
     if (!cel) return
     for (const [x, y] of reach(points, true)) {
       if (x < 0 || y < 0 || x >= W || y >= H) continue
       const i = (y * W + x) * 4
       cel.set(base.subarray(i, i + 4), i)
     }
+    s.touch() // redraw, or the removed corner would stay on screen until the next change
   }
 
   const drawShape = (d: Extract<Drag, { kind: 'shape' }>, end: Cell, shift: boolean): void => {
@@ -435,8 +437,6 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
       if (handle?.join() !== hoverHandle?.join()) setHoverHandle(handle)
       return
     }
-    // The button came up somewhere we didn't hear about (e.g. over another app): finish here.
-    if (e.buttons === 0) return endDrag()
     const s = useStudio.getState()
     if (d.kind === 'scale') {
       scaleTo(d, e)

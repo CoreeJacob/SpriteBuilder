@@ -24,6 +24,7 @@ import {
   PROJECT_SUFFIX,
   type ComputedMeta,
   type EditableMeta,
+  type AtlasRecipe,
   type ImportedFile,
   type ImportResult,
   type LibraryItem,
@@ -54,6 +55,8 @@ interface StoredMeta extends EditableMeta {
 interface IndexFile {
   version: 1
   items: Record<string, StoredMeta>
+  /** Atlases packed from folders, keyed by folder ('' for the whole library). */
+  atlases?: Record<string, AtlasRecipe>
 }
 
 /** Copies can round a file's modified time (FAT and exFAT drives keep it to 2 seconds). */
@@ -122,6 +125,8 @@ export class Library {
   private lastEmitted = ''
   /** Moves made since the last update, sent along with it. */
   private pendingMoves: PathMove[] = []
+  /** Set when paths in the index changed (a move or rename) so the next scan saves it. */
+  private indexMoved = false
 
   private constructor(
     readonly root: string,
@@ -399,6 +404,29 @@ export class Library {
     })
   }
 
+  // ---------- atlases ----------
+
+  async getAtlases(): Promise<Record<string, AtlasRecipe>> {
+    return { ...this.index.atlases }
+  }
+
+  saveAtlas(folder: string, recipe: AtlasRecipe, png: Uint8Array, json: string): Promise<string> {
+    return this.mutate(async () => {
+      const name = basenameRel(recipe.output)
+      this.assertName(name)
+      if (extOf(name) !== 'png') throw new Error('An atlas is saved as a PNG')
+      this.abs(folder) // both must be inside the library
+      const base = stripExt(recipe.output)
+      await fs.mkdir(path.dirname(this.abs(recipe.output)), { recursive: true })
+      // Repacking replaces the atlas, so these overwrite on purpose (the app asks first if they'd replace something else).
+      await fs.writeFile(this.abs(recipe.output), png)
+      await fs.writeFile(this.abs(`${base}.json`), withSheetImage(json, name), 'utf8')
+      this.index.atlases = { ...this.index.atlases, [folder]: { output: recipe.output, options: recipe.options } }
+      await this.saveIndex()
+      return recipe.output
+    })
+  }
+
   // ---------- palettes ----------
 
   async listPalettes(): Promise<SavedPalette[]> {
@@ -493,10 +521,17 @@ export class Library {
     this.pendingMoves.push({ from, to })
   }
 
+  /** Follows a move or rename: item details, and atlases (their folders and where they're saved). */
   private remapMeta(map: (p: string) => string): void {
     const next: Record<string, StoredMeta> = {}
     for (const [p, meta] of Object.entries(this.index.items)) next[map(p)] = meta
     this.index.items = next
+    this.indexMoved = true // mutate() rescans straight after, and the scan saves it
+    if (this.index.atlases) {
+      this.index.atlases = Object.fromEntries(
+        Object.entries(this.index.atlases).map(([folder, recipe]) => [folder ? map(folder) : folder, { ...recipe, output: map(recipe.output) }])
+      )
+    }
   }
 
   private async loadIndex(): Promise<void> {
@@ -550,6 +585,7 @@ export class Library {
     for (const move of matchMoves(vanished, arrivals)) {
       this.index.items[move.to] = this.index.items[move.from]
       delete this.index.items[move.from]
+      for (const recipe of Object.values(this.index.atlases ?? {})) if (recipe.output === move.from) recipe.output = move.to
       this.pendingMoves.push(move) // so open documents follow, as with moves made in the app
       changed = true
     }
@@ -602,7 +638,8 @@ export class Library {
         changed = true
       }
     }
-    if (changed) await this.saveIndex()
+    if (changed || this.indexMoved) await this.saveIndex()
+    this.indexMoved = false
 
     folders.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
     items.sort((a, b) => a.path.localeCompare(b.path))

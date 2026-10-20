@@ -340,6 +340,21 @@ export function blendOver(dst: Uint8ClampedArray, src: Uint8ClampedArray, opacit
   }
 }
 
+/** The smallest rectangle holding every pixel that isn't fully transparent, or null if there are none. */
+export function opaqueBounds(buf: Uint8ClampedArray, width: number, height: number): Region | null {
+  let [minX, minY, maxX, maxY] = [width, height, -1, -1]
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (buf[(y * width + x) * 4 + 3] === 0) continue
+      if (x < minX) minX = x
+      if (x > maxX) maxX = x
+      if (y < minY) minY = y
+      if (y > maxY) maxY = y
+    }
+  }
+  return maxX < 0 ? null : { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 }
+}
+
 /**
  * The smallest rectangle holding every pixel that differs between two same-sized buffers,
  * or null when they match. Undo keeps just this part of a change.

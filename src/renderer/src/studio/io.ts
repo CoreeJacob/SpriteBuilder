@@ -7,7 +7,7 @@ import { attempt, useApp } from '@/app/store'
 import { canvasToBytes, loadImage, pixelsToCanvas, readPixels, scaleCanvas } from '@/lib/canvas'
 import { itemUrl } from '@/lib/fileUrl'
 import { encodeGif } from './exporters'
-import { compositeFrame, docFromFrames, MAX_SIZE, parseDoc, serializeDoc, type SpriteDoc } from './model'
+import { compositeFrame, docFromFrames, MAX_SIZE, parseDoc, serializeDoc, type FrameTag, type SpriteDoc } from './model'
 import { fitToCanvas, fitWithin, resizePixels } from './raster'
 import { useStudio } from './store'
 
@@ -62,13 +62,11 @@ export async function openInStudio(item: LibraryItem): Promise<void> {
   }
 
   try {
-    const img = await loadImage(itemUrl(item))
-    const { naturalWidth: w, naturalHeight: h } = img
-    if (!w || !h) throw new Error('This image has no pixel size (vector images cannot be opened in Pixel Studio)')
+    const { width: w, height: h, pixels } = await readStill(item)
     if (w > MAX_SIZE || h > MAX_SIZE) {
       throw new Error(`Pixel Studio works on images up to ${MAX_SIZE}×${MAX_SIZE}. This one is ${w}×${h}.`)
     }
-    const doc = docFromFrames(w, h, [{ pixels: readPixels(img, w, h), duration: 100 }])
+    const doc = docFromFrames(w, h, [{ pixels, duration: 100 }])
     // Saving writes back to a PNG, so only a PNG can be updated in place.
     useStudio.getState().loadDoc(doc, { ...location, savedPath: item.ext === 'png' ? item.path : null })
     app.setView('studio')
@@ -106,6 +104,40 @@ export async function insertImage(url: string, name: string, fit: boolean): Prom
 }
 
 const ANIMATED_TYPES: Record<string, string> = { gif: 'image/gif', webp: 'image/webp', png: 'image/apng' }
+
+/** A still image's pixels (an animated one's first frame). */
+async function readStill(item: LibraryItem): Promise<{ width: number; height: number; pixels: Uint8ClampedArray }> {
+  const img = await loadImage(itemUrl(item))
+  const { naturalWidth: width, naturalHeight: height } = img
+  if (!width || !height) throw new Error('This image has no pixel size (vector images can’t be used here)')
+  return { width, height, pixels: readPixels(img, width, height) }
+}
+
+export interface ItemFrames {
+  width: number
+  height: number
+  frames: Array<{ pixels: Uint8ClampedArray; duration: number }>
+  /** A Studio sprite's named frame ranges. */
+  tags: FrameTag[]
+}
+
+/**
+ * Every frame of a library image as plain pixels: a Pixel Studio sprite's frames (its visible
+ * layers combined), each frame of an animated GIF/WebP/PNG, or a still image as a single frame.
+ */
+export async function readItemFrames(item: LibraryItem): Promise<ItemFrames> {
+  const text = item.hasProject ? await window.api.readProject(item.path) : null
+  if (text) {
+    const doc = parseDoc(text)
+    return { width: doc.width, height: doc.height, frames: doc.frames.map((f, i) => ({ pixels: compositeFrame(doc, i), duration: f.duration })), tags: doc.tags }
+  }
+  if ((item.frames ?? 1) > 1 && ANIMATED_TYPES[item.ext]) {
+    const frames = await decodeFrames(itemUrl(item), ANIMATED_TYPES[item.ext]).catch(() => null)
+    if (frames?.length) return { width: frames[0].width, height: frames[0].height, frames, tags: [] }
+  }
+  const { width, height, pixels } = await readStill(item)
+  return { width, height, frames: [{ pixels, duration: 100 }], tags: [] }
+}
 
 interface DecodedFrame {
   width: number

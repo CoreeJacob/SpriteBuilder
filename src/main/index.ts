@@ -7,6 +7,7 @@ import {
   IMAGE_EXTENSIONS,
   type ComputedMeta,
   type EditableMeta,
+  type AtlasRecipe,
   type ImportedFile,
   type LibrarySnapshot,
   type MenuCommand,
@@ -256,6 +257,8 @@ function registerIpc(): void {
     return lib().importFiles(dest, paths)
   })
   handle('items:importData', (dest: string, files: ImportedFile[]) => lib().importData(dest, files))
+  handle('atlas:list', () => lib().getAtlases())
+  handle('atlas:save', (folder: string, recipe: AtlasRecipe, png: Uint8Array, json: string) => lib().saveAtlas(folder, recipe, png, json))
   handle('items:move', (paths: string[], dest: string) => lib().moveItems(paths, dest))
   handle('items:rename', (p: string, name: string) => lib().renameItem(p, name))
   handle('items:duplicate', (p: string) => lib().duplicateItem(p))

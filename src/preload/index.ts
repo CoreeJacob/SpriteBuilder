@@ -20,6 +20,8 @@ const api: SpriteBuilderApi = {
   deleteFolder: (path) => ipcRenderer.invoke('folder:delete', path),
 
   importFiles: (dest, paths) => ipcRenderer.invoke('items:importFiles', dest, paths),
+  getAtlases: () => ipcRenderer.invoke('atlas:list'),
+  saveAtlas: (folder, recipe, png, json) => ipcRenderer.invoke('atlas:save', folder, recipe, png, json),
   importData: (dest, files) => ipcRenderer.invoke('items:importData', dest, files),
   moveItems: (paths, dest) => ipcRenderer.invoke('items:move', paths, dest),
   renameItem: (path, name) => ipcRenderer.invoke('items:rename', path, name),

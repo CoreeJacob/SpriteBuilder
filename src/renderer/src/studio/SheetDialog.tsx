@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
+import { PixelPreview } from '@/app/PixelPreview'
 import { attempt, useApp } from '@/app/store'
-import { drawPixels, pixelsToPng } from '@/lib/canvas'
+import { pixelsToPng } from '@/lib/canvas'
 import { planSheet, renderSheet, sheetJson, type SheetLayout, type SheetOptions } from './exporters'
 import { useStudio } from './store'
 
@@ -15,23 +16,11 @@ export function SheetDialog({ onClose }: { onClose: () => void }) {
   const [options, setOptions] = useState<SheetOptions>({ layout: doc.frames.length > 8 ? 'grid' : 'row', columns: 0, padding: 0, scale: 1 })
   const [withJson, setWithJson] = useState(true)
   const [busy, setBusy] = useState(false)
-  const previewRef = useRef<HTMLCanvasElement>(null)
 
   const plan = useMemo(() => planSheet(doc.frames.length, doc.width, doc.height, options), [doc, options])
   const pixels = useMemo(() => renderSheet(doc, plan, options.scale), [doc, plan, options.scale])
   const set = (patch: Partial<SheetOptions>): void => setOptions((current) => ({ ...current, ...patch }))
   const baseName = `${name}-sheet`
-
-  useEffect(() => {
-    const canvas = previewRef.current
-    if (!canvas) return
-    drawPixels(canvas, pixels, plan.width, plan.height)
-    // Show it as big as fits, in whole-pixel steps so it stays sharp.
-    const fit = Math.min(PREVIEW_W / plan.width, PREVIEW_H / plan.height)
-    const zoom = fit >= 1 ? Math.floor(fit) : fit
-    canvas.style.width = `${plan.width * zoom}px`
-    canvas.style.height = `${plan.height * zoom}px`
-  }, [pixels, plan])
 
   const save = async (target: 'file' | 'library'): Promise<void> => {
     setBusy(true)
@@ -60,7 +49,7 @@ export function SheetDialog({ onClose }: { onClose: () => void }) {
         <h2>Export Sprite Sheet</h2>
 
         <div className="sheet-preview checker">
-          <canvas ref={previewRef} className="pixelated" />
+          <PixelPreview pixels={pixels} width={plan.width} height={plan.height} maxW={PREVIEW_W} maxH={PREVIEW_H} />
         </div>
         <p className="muted small">
           {doc.frames.length} frame{doc.frames.length === 1 ? '' : 's'} · {plan.columns}×{plan.rows} · sheet {plan.width}×{plan.height} px

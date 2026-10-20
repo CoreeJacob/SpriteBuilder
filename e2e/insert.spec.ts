@@ -125,11 +125,13 @@ test('resizing an inserted image: fit, handles and quick sizes', async ({ app })
   // Full size, centred at 12–19; drag the bottom-right handle out to 28,28 → 16×16 (2×)
   await openInsert(app)
   await choose(app, 'knight')
+  await app.remeasure()
   await app.drag([app.corner(20, 20), app.corner(24, 24), app.corner(28, 28)])
   const handled = [await app.px(12, 14), await app.px(27, 25), await app.px(27, 26), await app.px(28, 20), await app.px(11, 14)]
   await check('dragging a corner handle resizes it, keeping the opposite corner still', handled.join() === '#1d2b53,#1d2b53,empty,empty,empty', handled)
 
   // ⇧ keeps the shape: pull the right edge to 20 → 8 wide, so 8 tall again (centred on the old 12–27)
+  await app.remeasure()
   await app.drag([app.corner(28, 20), app.corner(20, 20)], SHIFT)
   const kept = [await app.px(12, 17), await app.px(19, 17), await app.px(20, 17), await app.px(12, 16), await app.px(12, 24)]
   await check('with ⇧, an edge handle keeps the original shape', kept.join() === '#1d2b53,#1d2b53,empty,empty,empty', kept)

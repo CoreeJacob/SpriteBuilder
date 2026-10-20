@@ -463,3 +463,62 @@ describe('dropping files on a folder', () => {
     }
   })
 })
+
+describe('atlases', () => {
+  const options = { maxSize: 512, padding: 2, trim: true, powerOfTwo: false, includeSubfolders: true }
+  const json = (image: string) => JSON.stringify({ frames: {}, meta: { image } })
+
+  it('saves the PNG and JSON, remembers how it was packed, and repacks in place', async () => {
+    await write('Enemies/bat.png')
+    await open()
+    expect(await lib.saveAtlas('Enemies', { output: 'Enemies-atlas.png', options }, PNG, json('x.png'))).toBe('Enemies-atlas.png')
+    expect(JSON.parse(await fs.readFile(path.join(root, 'Enemies-atlas.json'), 'utf8')).meta.image).toBe('Enemies-atlas.png')
+    expect(item('Enemies-atlas.png')).toBeDefined()
+    // Repacking overwrites rather than making "Enemies-atlas 2".
+    await lib.saveAtlas('Enemies', { output: 'Enemies-atlas.png', options: { ...options, padding: 0 } }, GIF, json('x.png'))
+    expect(names().filter((n) => n.startsWith('Enemies-atlas'))).toEqual(['Enemies-atlas.png'])
+    lib.close()
+    await open()
+    expect(await lib.getAtlases()).toEqual({ Enemies: { output: 'Enemies-atlas.png', options: { ...options, padding: 0 } } })
+  })
+
+  it('follows renamed and moved folders, and an atlas file moved in the app or in Finder', async () => {
+    await write('Enemies/bat.png')
+    await write('Packs/.keep', '')
+    await open()
+    await lib.saveAtlas('Enemies', { output: 'Enemies/out.png', options }, PNG, json('out.png'))
+    await lib.renameFolder('Enemies', 'Monsters')
+    expect(Object.entries(await lib.getAtlases())).toEqual([['Monsters', { output: 'Monsters/out.png', options }]])
+    await lib.moveFolder('Monsters', 'Packs')
+    expect((await lib.getAtlases())['Packs/Monsters'].output).toBe('Packs/Monsters/out.png')
+    await lib.moveItems(['Packs/Monsters/out.png'], 'Packs')
+    expect((await lib.getAtlases())['Packs/Monsters'].output).toBe('Packs/out.png')
+    lib.close()
+    await fs.rename(path.join(root, 'Packs/out.png'), path.join(root, 'monsters-atlas.png')) // in Finder
+    await open()
+    expect((await lib.getAtlases())['Packs/Monsters'].output).toBe('monsters-atlas.png')
+  })
+
+  it('only saves atlases as PNGs inside the library', async () => {
+    await open()
+    await expect(lib.saveAtlas('', { output: 'atlas.gif', options }, PNG, json('a'))).rejects.toThrow()
+    await expect(lib.saveAtlas('', { output: '../outside.png', options }, PNG, json('a'))).rejects.toThrow()
+  })
+})
+
+describe('moves and renames are saved straight away', () => {
+  const onDisk = async () => JSON.parse(await fs.readFile(path.join(root, '.spritebuilder/library.json'), 'utf8')).items as Record<string, { tags: string[] }>
+
+  it('writes the new paths to the index file, so nothing depends on another save happening later', async () => {
+    await write('hero.png')
+    await write('Heroes/.keep', '')
+    await open()
+    await lib.updateMeta(['hero.png'], { tags: ['player'] })
+    await lib.moveItems(['hero.png'], 'Heroes')
+    expect((await onDisk())['Heroes/hero.png']?.tags).toEqual(['player'])
+    await lib.renameItem('Heroes/hero.png', 'knight')
+    expect(Object.keys(await onDisk())).toEqual(['Heroes/knight.png'])
+    await lib.renameFolder('Heroes', 'Party')
+    expect(Object.keys(await onDisk())).toEqual(['Party/knight.png'])
+  })
+})

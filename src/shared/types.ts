@@ -52,6 +52,26 @@ export interface LibrarySnapshot {
   moved?: PathMove[]
 }
 
+/** How a folder is packed into a texture atlas. */
+export interface AtlasOptions {
+  /** The atlas may not be wider or taller than this. */
+  maxSize: number
+  /** Empty pixels between sprites (some engines need this so neighbours don't bleed). */
+  padding: number
+  /** Crop each sprite to its visible pixels; the JSON still records the original size. */
+  trim: boolean
+  /** Round the atlas up to power-of-two sides (64, 128, 256…) for engines that need them. */
+  powerOfTwo: boolean
+  includeSubfolders: boolean
+}
+
+/** A folder's atlas: where it's saved and how it was packed, so it can be repacked in one click. */
+export interface AtlasRecipe {
+  /** Library path of the atlas PNG; its JSON sits next to it. */
+  output: string
+  options: AtlasOptions
+}
+
 /** What a drop or import did: files copied in, and the library's own files moved. */
 export interface ImportResult {
   imported: string[]
@@ -96,6 +116,10 @@ export interface SpriteBuilderApi {
   /** Copies files into the library. With no paths, shows an Open dialog first. */
   importFiles(destFolder: string, absolutePaths?: string[]): Promise<ImportResult>
   importData(destFolder: string, files: ImportedFile[]): Promise<string[]>
+  /** Every folder's atlas, keyed by folder ('' for the whole library). */
+  getAtlases(): Promise<Record<string, AtlasRecipe>>
+  /** Saves (or replaces) a folder's atlas PNG and JSON, and remembers how it was made. */
+  saveAtlas(folder: string, recipe: AtlasRecipe, png: Uint8Array, json: string): Promise<string>
   moveItems(paths: string[], destFolder: string): Promise<string[]>
   renameItem(path: string, newName: string): Promise<string>
   duplicateItem(path: string): Promise<string>

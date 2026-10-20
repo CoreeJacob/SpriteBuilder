@@ -1882,6 +1882,20 @@ textarea.input {
   margin-left: auto;
 }
 
+.atlas-dialog {
+  width: min(640px, calc(100vw - 32px));
+}
+.atlas-preview {
+  height: 300px;
+}
+.atlas-checks {
+  display: grid;
+  gap: 6px;
+}
+.atlas-output {
+  grid-template-columns: 1fr 1fr;
+}
+
 /* ---------- canvas size dialog ---------- */
 
 .canvas-size-dialog {

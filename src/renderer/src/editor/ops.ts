@@ -2,7 +2,7 @@
 // never changed, which keeps undo simple.
 
 import { applyPalette, quantize } from 'gifenc'
-import { colorsByUse, floodRegion, resizePixels, turnPixels, type RGBA, type Turn } from '@/studio/raster'
+import { colorsByUse, floodRegion, opaqueBounds, resizePixels, turnPixels, type RGBA, type Turn } from '@/studio/raster'
 
 export interface Img {
   width: number
@@ -48,22 +48,7 @@ export function crop(img: Img, rect: Rect): Img {
 }
 
 /** Smallest rectangle holding every non-transparent pixel, or null if the image is empty. */
-export function contentBounds(img: Img): Rect | null {
-  let minX = img.width
-  let minY = img.height
-  let maxX = -1
-  let maxY = -1
-  for (let y = 0; y < img.height; y++) {
-    for (let x = 0; x < img.width; x++) {
-      if (img.data[(y * img.width + x) * 4 + 3] === 0) continue
-      if (x < minX) minX = x
-      if (x > maxX) maxX = x
-      if (y < minY) minY = y
-      if (y > maxY) maxY = y
-    }
-  }
-  return maxX < 0 ? null : { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 }
-}
+export const contentBounds = (img: Img): Rect | null => opaqueBounds(img.data, img.width, img.height)
 
 /** Crops away fully transparent edges. */
 export function trim(img: Img): Img {
