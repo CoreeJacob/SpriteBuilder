@@ -3,4 +3,5 @@ out
 dist
 .DS_Store
 test-results
+test-results.noindex
 e2e-report

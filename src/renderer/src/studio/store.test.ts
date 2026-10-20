@@ -219,3 +219,48 @@ describe('display-only settings', () => {
     expect(useStudio.getState().dirty).toBe(false)
   })
 })
+
+describe('resizing lifted pixels', () => {
+  const state = () => useStudio.getState()
+  // A 2×2 picture: red, green / blue, white (red channel 255, 0, 0, 255)
+  const picture = { w: 2, h: 2, pixels: new Uint8ClampedArray([255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255]) }
+  const reds = () => Array.from(state().floating!.pixels.filter((_, i) => i % 4 === 0))
+
+  it('makes an inserted picture fill the canvas with square pixels, as one undo step', () => {
+    state().newDoc(16, 16)
+    state().insertImage(picture, 'tiny')
+    state().rescale('fit')
+    expect(state().floating).toMatchObject({ x: 0, y: 0, w: 16, h: 16 })
+    expect(reds().slice(0, 16)).toEqual([...Array(8).fill(255), ...Array(8).fill(0)]) // each pixel became 8×8
+    state().commitFloating()
+    state().undo()
+    expect(state().doc!.layers.map((l) => l.name)).toEqual(['Layer 1'])
+  })
+
+  it('always resizes from the original, so growing then shrinking loses nothing', () => {
+    state().newDoc(16, 16)
+    state().insertImage(picture, 'tiny')
+    state().scaleFloating({ x: 0, y: 0, w: 3, h: 5 }) // an awkward size that drops pixels
+    state().scaleFloating({ x: 0, y: 0, w: 2, h: 2 })
+    expect(Array.from(state().floating!.pixels)).toEqual(Array.from(picture.pixels))
+  })
+
+  it('twice and half the size grow and shrink about the middle', () => {
+    state().newDoc(16, 16)
+    state().insertImage(picture, 'tiny') // centred at 7,7
+    state().rescale('double')
+    expect(state().floating).toMatchObject({ x: 6, y: 6, w: 4, h: 4 })
+    state().rescale('half')
+    expect(state().floating).toMatchObject({ x: 7, y: 7, w: 2, h: 2 })
+  })
+
+  it('a turn after a resize keeps both the shape and the original in step', () => {
+    state().newDoc(16, 16)
+    state().insertImage({ w: 2, h: 1, pixels: new Uint8ClampedArray([255, 0, 0, 255, 0, 0, 0, 255]) }, 'bar')
+    state().scaleFloating({ x: 0, y: 0, w: 4, h: 2 })
+    state().turn('rotateCW')
+    expect(state().floating).toMatchObject({ w: 2, h: 4 })
+    state().scaleFloating({ ...state().selection!, w: 1, h: 2 }) // back to the original size, turned
+    expect(reds()).toEqual([255, 0])
+  })
+})

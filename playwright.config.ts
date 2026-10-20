@@ -8,5 +8,6 @@ export default defineConfig({
   workers: 3,
   timeout: 120_000,
   reporter: [['list'], ['html', { open: 'never', outputFolder: 'e2e-report' }]],
-  outputDir: 'test-results'
+  // ".noindex" keeps Spotlight from indexing the throwaway libraries every run makes.
+  outputDir: 'test-results.noindex'
 })

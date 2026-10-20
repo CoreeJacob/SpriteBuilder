@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 import { Dropdown } from '@/app/Dropdown'
 import { Icon, type IconName } from '@/app/Icon'
 import { MAX_BRUSH, type Turn } from './raster'
-import { BRUSH_TOOLS, SHAPE_TOOLS, useStudio, type Tool } from './store'
+import { BRUSH_TOOLS, SHAPE_TOOLS, useStudio, type Rescale, type Tool } from './store'
 
 export const TOOLS: Array<{ tool: Tool; icon: IconName; label: string; key: string; groupStart?: boolean }> = [
   { tool: 'pencil', icon: 'pencil', label: 'Pencil', key: 'B' },
@@ -121,10 +121,17 @@ function BrushMenu() {
   )
 }
 
+const RESCALES: Array<{ how: Rescale; label: string }> = [
+  { how: 'double', label: 'Twice as big' },
+  { how: 'half', label: 'Half the size' },
+  { how: 'fit', label: 'Fill the canvas' }
+]
+
 function TurnMenu() {
   const hasSelection = useStudio((s) => s.selection !== null)
+  const doc = useStudio((s) => s.doc)
   return (
-    <ToolPopover label={<Icon name="rotateCW" size={14} />} title="Flip or rotate the selection (or the whole layer)">
+    <ToolPopover label={<Icon name="rotateCW" size={14} />} title="Flip, rotate or resize the selection (or the whole layer)">
       {(close) => (
         <>
           <div className="dropdown-label">{hasSelection ? 'Selection' : 'Whole layer'}</div>
@@ -133,6 +140,14 @@ function TurnMenu() {
               <Icon name={t.icon} /> {t.label} <span className="muted small menu-keys">{t.keys}</span>
             </button>
           ))}
+          <div className="dropdown-sep" />
+          {RESCALES.map((r) => (
+            <button key={r.how} className="dropdown-item" onClick={() => (useStudio.getState().rescale(r.how), close())}>
+              <Icon name="resize" /> {r.label}
+              {r.how === 'fit' && doc && <span className="muted small menu-keys">{doc.width}×{doc.height}</span>}
+            </button>
+          ))}
+          <p className="muted small">Or drag the handles on the selection (⇧ keeps its shape).</p>
         </>
       )}
     </ToolPopover>

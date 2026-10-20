@@ -22,7 +22,19 @@ import {
 } from './layers'
 import { createDoc, type Layer, type SpriteDoc } from './model'
 import type { Palette } from './palettes'
-import { blitRegion, changedRegion, clearRegion, extractRegion, MAX_BRUSH, turnPixels, type BrushShape, type Region, type Turn } from './raster'
+import {
+  blitRegion,
+  changedRegion,
+  clearRegion,
+  extractRegion,
+  fitToCanvas,
+  MAX_BRUSH,
+  resizePixels,
+  turnPixels,
+  type BrushShape,
+  type Region,
+  type Turn
+} from './raster'
 
 export type Tool = 'pencil' | 'eraser' | 'fill' | 'eyedropper' | 'line' | 'rect' | 'ellipse' | 'select'
 
@@ -59,9 +71,22 @@ type HistoryEntry =
 /** Pixels lifted off the layer by the select tool, waiting to be dropped somewhere. */
 interface Floating extends Region {
   pixels: Uint8ClampedArray
+  /** The pixels as first lifted (turned with them): resizing always starts from these, so nothing blurs or is lost. */
+  original: { w: number; h: number; pixels: Uint8ClampedArray }
   /** Finishes the undo step that began when the pixels were lifted or pasted. */
   done: () => void
 }
+
+/** Lifted pixels at `region`, remembering them as the original for later resizing. */
+const lifted = (region: Region, pixels: Uint8ClampedArray, done: () => void): Floating => ({
+  ...region,
+  pixels,
+  original: { w: region.w, h: region.h, pixels },
+  done
+})
+
+/** Quick sizes for the selection, from the Select tool's menu. */
+export type Rescale = 'double' | 'half' | 'fit'
 
 /** What ⌘C/⌘X keep; `x`/`y` let ⌘V put pixels back where they came from. */
 export interface ClipboardImage extends Region {
@@ -149,6 +174,10 @@ interface StudioState extends DocLocation {
   paste(image: ClipboardImage): void
   /** Flips or turns the selection, or the whole layer when nothing is selected. */
   turn(turn: Turn): void
+  /** Resizes the lifted pixels to fill `region` (pixel-perfect, from the original pixels). */
+  scaleFloating(region: Region): void
+  /** Twice the size, half the size, or as big as fits the canvas: the selection, or the whole layer. */
+  rescale(how: Rescale): void
   /** Puts a picture on a new layer above the current one, centred and still movable; one undo step. */
   insertImage(image: Pick<ClipboardImage, 'w' | 'h' | 'pixels'>, name: string): void
 
@@ -231,6 +260,15 @@ export const useStudio = create<StudioState>((set, get) => {
     })
     set({ layerId: nextLayer, frame: nextFrame, canUndo: true, canRedo: false, dirty: true, version: get().version + 1 })
   }
+  /** Lifts the selection (or, with nothing selected, the whole layer) ready to turn or resize. */
+  const liftForTransform = (): Floating | null => {
+    const doc = get().doc
+    if (!doc || !get().activeCel()) return null
+    if (!get().selection) set({ selection: { x: 0, y: 0, w: doc.width, h: doc.height } })
+    if (!get().floating) get().liftSelection()
+    return get().floating
+  }
+
   const changeLayers = (change: (doc: SpriteDoc, active: string) => string): void =>
     changeDoc((doc, at) => ({ layerId: change(doc, at.layerId) }))
 
@@ -446,7 +484,7 @@ export const useStudio = create<StudioState>((set, get) => {
       const done = get().beginEdit()
       const pixels = extractRegion(cel, doc.width, doc.height, selection)
       if (!keepOriginal) clearRegion(cel, doc.width, doc.height, selection)
-      set({ floating: { ...selection, pixels, done }, version: get().version + 1 })
+      set({ floating: lifted(selection, pixels, done), version: get().version + 1 })
     },
 
     moveFloating: (x, y) => {
@@ -514,7 +552,7 @@ export const useStudio = create<StudioState>((set, get) => {
       const done = get().beginEdit()
       set({
         tool: 'select',
-        floating: { x, y, w: image.w, h: image.h, pixels: image.pixels.slice(), done },
+        floating: lifted({ x, y, w: image.w, h: image.h }, image.pixels.slice(), done),
         selection: { x, y, w: image.w, h: image.h },
         version: get().version + 1
       })
@@ -522,17 +560,14 @@ export const useStudio = create<StudioState>((set, get) => {
 
     turn: (kind) => {
       const doc = get().doc
-      if (!doc || !get().activeCel()) return
-      // With nothing selected, the whole layer turns.
       const whole = !get().selection
-      if (whole) set({ selection: { x: 0, y: 0, w: doc.width, h: doc.height } })
-      if (!get().floating) get().liftSelection()
-      const f = get().floating
-      if (!f) return
+      const f = liftForTransform()
+      if (!doc || !f) return
       const t = turnPixels(f.pixels, f.w, f.h, kind)
+      const o = turnPixels(f.original.pixels, f.original.w, f.original.h, kind)
       // Turn about the selection's centre; a 90° turn swaps its width and height.
       const region = { x: f.x + Math.floor((f.w - t.w) / 2), y: f.y + Math.floor((f.h - t.h) / 2), w: t.w, h: t.h }
-      set({ floating: { ...f, ...region, pixels: t.pixels }, selection: region, version: get().version + 1 })
+      set({ floating: { ...f, ...region, pixels: t.pixels, original: o }, selection: region, version: get().version + 1 })
       if (whole && t.w === doc.width && t.h === doc.height) {
         // The layer still fits the canvas exactly, so put it straight back down.
         get().commitFloating()
@@ -541,6 +576,32 @@ export const useStudio = create<StudioState>((set, get) => {
         // Leave it lifted, ready to drag into place.
         set({ tool: 'select' })
       }
+    },
+
+    scaleFloating: (region) => {
+      const f = get().floating
+      if (!f) return
+      const w = Math.max(1, Math.round(region.w))
+      const h = Math.max(1, Math.round(region.h))
+      if (w === f.w && h === f.h && region.x === f.x && region.y === f.y) return
+      const { original: o } = f
+      const pixels = w === o.w && h === o.h ? o.pixels.slice() : resizePixels(o.pixels, o.w, o.h, w, h)
+      const next = { x: Math.round(region.x), y: Math.round(region.y), w, h }
+      set({ floating: { ...f, ...next, pixels }, selection: next, version: get().version + 1 })
+    },
+
+    rescale: (how) => {
+      const doc = get().doc
+      const f = liftForTransform()
+      if (!doc || !f) return
+      const [w, h] =
+        how === 'double' ? [f.w * 2, f.h * 2]
+        : how === 'half' ? [Math.max(1, Math.round(f.w / 2)), Math.max(1, Math.round(f.h / 2))]
+        : fitToCanvas(f.original.w, f.original.h, doc.width, doc.height)
+      // Grow or shrink about the middle; "fit" centres it on the canvas.
+      const [cx, cy] = how === 'fit' ? [doc.width / 2, doc.height / 2] : [f.x + f.w / 2, f.y + f.h / 2]
+      get().scaleFloating({ x: Math.round(cx - w / 2), y: Math.round(cy - h / 2), w, h })
+      set({ tool: 'select' })
     },
 
     insertImage: (image, name) => {
@@ -559,7 +620,7 @@ export const useStudio = create<StudioState>((set, get) => {
       set({
         layerId: id,
         tool: 'select',
-        floating: { ...region, pixels: image.pixels.slice(), done },
+        floating: lifted(region, image.pixels.slice(), done),
         selection: region,
         dirty: true,
         version: get().version + 1

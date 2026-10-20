@@ -7,6 +7,7 @@ import {
   constrainEnd,
   ellipsePoints,
   extractRegion,
+  fitToCanvas,
   fitWithin,
   floodFill,
   floodFillInRegion,
@@ -240,5 +241,14 @@ describe('shapePixels', () => {
     shapePixels('rect', [0, 0], [511, 511], true, 8, 'square')
     shapePixels('ellipse', [0, 0], [511, 511], true, 8, 'round')
     expect(performance.now() - start).toBeLessThan(100) // was about 700 ms per mouse move
+  })
+})
+
+describe('fitToCanvas', () => {
+  it('grows small images by a whole number and shrinks big ones to fit', () => {
+    expect(fitToCanvas(16, 16, 512, 512)).toEqual([512, 512]) // 32×
+    expect(fitToCanvas(16, 8, 100, 100)).toEqual([96, 48]) // 6×, still square pixels
+    expect(fitToCanvas(600, 400, 16, 16)).toEqual([16, 11])
+    expect(fitToCanvas(32, 32, 32, 32)).toEqual([32, 32])
   })
 })

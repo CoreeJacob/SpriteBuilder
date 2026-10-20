@@ -9,6 +9,7 @@ import {
   getPixel,
   inRegion,
   isCorner,
+  type Region,
   linePoints,
   mirrorPoints,
   normalizeRect,
@@ -36,6 +37,15 @@ type Drag =
   | { kind: 'shape'; done: () => void; tool: 'line' | 'rect' | 'ellipse'; start: Cell; base: Uint8ClampedArray; color: RGBA }
   | { kind: 'select'; anchor: Cell; moved: boolean }
   | { kind: 'move'; startCell: Cell; origin: Cell }
+  | { kind: 'scale'; handle: Handle; origin: Region }
+
+/** A resize handle on the selection: which side it moves (−1 left/top, 1 right/bottom, 0 neither). */
+type Handle = [-1 | 0 | 1, -1 | 0 | 1]
+const HANDLES: Handle[] = [[-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0]]
+/** Half the size of a handle's grab area, in screen pixels. */
+const HANDLE_REACH = 7
+const handleCursor = ([hx, hy]: Handle): string =>
+  hx === 0 ? 'ns-resize' : hy === 0 ? 'ew-resize' : hx === hy ? 'nwse-resize' : 'nesw-resize'
 
 /** Tile-grid lines every this many pixels, handy for 8×8 game tiles. */
 const MAJOR_GRID = 8
@@ -65,6 +75,7 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
   const lastClick = useRef<Cell | null>(null)
   const [hover, setHover] = useState<Cell | null>(null)
   const [altDown, setAltDown] = useState(false)
+  const [hoverHandle, setHoverHandle] = useState<Handle | null>(null)
 
   const repeat = tileMode ? 3 : 1
 
@@ -204,6 +215,18 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
       ctx.strokeStyle = '#fff'
       ctx.strokeRect(x, y, w, h)
       ctx.restore()
+      if (tool === 'select') {
+        // Resize handles on the corners and edges.
+        ctx.fillStyle = '#fff'
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)'
+        ctx.lineWidth = 1
+        for (const [hx, hy] of HANDLES) {
+          const px = Math.round(ox + (selection.x + ((hx + 1) / 2) * selection.w) * zoom) - 3.5
+          const py = Math.round(oy + (selection.y + ((hy + 1) / 2) * selection.h) * zoom) - 3.5
+          ctx.fillRect(px, py, 7, 7)
+          ctx.strokeRect(px, py, 7, 7)
+        }
+      }
     }
 
     if (hover && tool !== 'select') {
@@ -240,6 +263,45 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
   const wrap = ([x, y]: Cell): Cell => (tileMode ? [((x % W) + W) % W, ((y % H) + H) % H] : [x, y])
   const unoffset = ([x, y]: Cell): Cell => (tileMode ? [x - W, y - H] : [x, y])
   const clampCell = ([x, y]: Cell): Cell => [Math.max(0, Math.min(W - 1, x)), Math.max(0, Math.min(H - 1, y))]
+
+  /** The resize handle under the pointer, if the select tool is showing handles. */
+  const handleAt = (e: PointerEvent): Handle | null => {
+    const box = useStudio.getState().selection
+    if (tool !== 'select' || !box) return null
+    const rect = canvasRef.current!.getBoundingClientRect()
+    const [ox, oy] = tileMode ? [W * zoom, H * zoom] : [0, 0]
+    return (
+      HANDLES.find(([hx, hy]) => {
+        const px = ox + (box.x + ((hx + 1) / 2) * box.w) * zoom
+        const py = oy + (box.y + ((hy + 1) / 2) * box.h) * zoom
+        return Math.abs(e.clientX - rect.left - px) <= HANDLE_REACH && Math.abs(e.clientY - rect.top - py) <= HANDLE_REACH
+      }) ?? null
+    )
+  }
+
+  /** Resizes from a handle: the opposite side stays put; ⇧ keeps the original shape. */
+  const scaleTo = (d: Extract<Drag, { kind: 'scale' }>, e: PointerEvent): void => {
+    const rect = canvasRef.current!.getBoundingClientRect()
+    const [ox, oy] = tileMode ? [W * zoom, H * zoom] : [0, 0]
+    // The nearest line between pixels to the pointer.
+    const gx = Math.round((e.clientX - rect.left - ox) / zoom)
+    const gy = Math.round((e.clientY - rect.top - oy) / zoom)
+    const { handle: [hx, hy], origin: o } = d
+    let [left, top, right, bottom] = [o.x, o.y, o.x + o.w, o.y + o.h]
+    if (hx === -1) left = Math.min(gx, right - 1)
+    if (hx === 1) right = Math.max(gx, left + 1)
+    if (hy === -1) top = Math.min(gy, bottom - 1)
+    if (hy === 1) bottom = Math.max(gy, top + 1)
+    let [w, h] = [right - left, bottom - top]
+    if (e.shiftKey) {
+      // Same shape as before: corners follow whichever side moved further; edges grow the other side evenly.
+      const times = hx === 0 ? h / o.h : hy === 0 ? w / o.w : Math.max(w / o.w, h / o.h)
+      ;[w, h] = [Math.max(1, Math.round(o.w * times)), Math.max(1, Math.round(o.h * times))]
+      left = hx === -1 ? right - w : hx === 1 ? left : Math.round(o.x + (o.w - w) / 2)
+      top = hy === -1 ? bottom - h : hy === 1 ? top : Math.round(o.y + (o.h - h) / 2)
+    }
+    useStudio.getState().scaleFloating({ x: left, y: top, w, h })
+  }
 
   const effectiveTool = (e: { altKey: boolean }): Tool =>
     e.altKey && PICKS_WITH_ALT.includes(tool) ? 'eyedropper' : tool
@@ -289,6 +351,13 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
 
     if (current === 'select') {
       e.currentTarget.setPointerCapture(e.pointerId)
+      const handle = handleAt(e)
+      if (handle) {
+        if (!s.floating) s.liftSelection()
+        const f = useStudio.getState().floating
+        if (f) drag.current = { kind: 'scale', handle, origin: { x: f.x, y: f.y, w: f.w, h: f.h } }
+        return
+      }
       const [sx, sy] = unoffset(cell)
       if (s.floating && inRegion(s.floating, sx, sy)) {
         drag.current = { kind: 'move', startCell: cell, origin: [s.floating.x, s.floating.y] }
@@ -361,9 +430,17 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
     }
 
     const d = drag.current
-    if (!d) return
+    if (!d) {
+      const handle = handleAt(e)
+      if (handle?.join() !== hoverHandle?.join()) setHoverHandle(handle)
+      return
+    }
+    // The button came up somewhere we didn't hear about (e.g. over another app): finish here.
+    if (e.buttons === 0) return endDrag()
     const s = useStudio.getState()
-    if (d.kind === 'stroke') {
+    if (d.kind === 'scale') {
+      scaleTo(d, e)
+    } else if (d.kind === 'stroke') {
       if (cell[0] === d.last[0] && cell[1] === d.last[1]) return
       const points = linePoints(...d.last, ...cell)
       if (d.perfect) {
@@ -426,6 +503,7 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
     <canvas
       ref={canvasRef}
       className={`pixel-canvas checker ${cursorClass}`}
+      style={tool === 'select' && hoverHandle ? { cursor: handleCursor(hoverHandle) } : undefined}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={endDrag}
@@ -433,8 +511,8 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
       onPointerLeave={() => {
         setHover(null)
         onHover(null)
+        if (!drag.current) setHoverHandle(null)
       }}
-      onLostPointerCapture={endDrag}
       onContextMenu={(e) => e.preventDefault()}
       onWheel={onWheel}
     />

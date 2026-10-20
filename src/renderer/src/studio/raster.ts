@@ -119,6 +119,15 @@ export function fitWithin(w: number, h: number, maxW: number, maxH: number): [nu
   return [Math.max(1, Math.round(w * scale)), Math.max(1, Math.round(h * scale))]
 }
 
+/**
+ * The size that best fills `maxW`×`maxH` with the same shape. Smaller images grow by a whole
+ * number (so every pixel stays square); bigger ones shrink to fit.
+ */
+export function fitToCanvas(w: number, h: number, maxW: number, maxH: number): [number, number] {
+  const times = Math.floor(Math.min(maxW / w, maxH / h))
+  return times >= 1 ? [w * times, h * times] : fitWithin(w, h, maxW, maxH)
+}
+
 /** Pixel-perfect resize: every output pixel copies the nearest input pixel. */
 export function resizePixels(src: Uint8ClampedArray, sw: number, sh: number, dw: number, dh: number): Uint8ClampedArray<ArrayBuffer> {
   const out = new Uint8ClampedArray(dw * dh * 4)

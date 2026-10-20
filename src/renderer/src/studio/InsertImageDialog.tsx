@@ -16,7 +16,7 @@ export function InsertImageDialog({ onClose }: { onClose: () => void }) {
       <div className="modal wide insert-image-dialog" onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
         <h2>Insert Image as Layer</h2>
         <p className="muted small">
-          It lands on a new layer, centred and selected, so you can drag it into place. Animated images bring their first frame.
+          It lands on a new layer, centred and selected: drag it into place, or drag its handles to resize it. Animated images bring their first frame.
         </p>
         <ImageChooser
           onChoose={(item) => {
@@ -26,9 +26,9 @@ export function InsertImageDialog({ onClose }: { onClose: () => void }) {
           }}
         />
         <div className="modal-actions">
-          <label className="check">
+          <label className="check" title="Small images grow by a whole number, so every pixel stays square; big ones shrink to fit">
             <input type="checkbox" checked={fit} onChange={(e) => setFit(e.target.checked)} />
-            Scale down to fit the canvas ({doc.width}×{doc.height})
+            Fit the canvas ({doc.width}×{doc.height})
           </label>
           <div className="spacer" />
           <button type="button" className="btn" onClick={onClose}>

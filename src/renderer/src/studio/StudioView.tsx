@@ -217,7 +217,8 @@ function StudioBar({ onNew, onSheet, onSize }: { onNew: () => void; onSheet: () 
   const docSize = useStudio((s) => (s.doc ? `${s.doc.width}×${s.doc.height}` : ''))
   const mirrorX = useStudio((s) => s.mirrorX)
   const mirrorY = useStudio((s) => s.mirrorY)
-  const canUndo = useStudio((s) => s.canUndo)
+  // Lifted pixels (pasted, inserted, being moved) can always be undone, even before they're put down.
+  const canUndo = useStudio((s) => s.canUndo || s.floating !== null)
   const canRedo = useStudio((s) => s.canRedo)
   const s = useStudio.getState()
 

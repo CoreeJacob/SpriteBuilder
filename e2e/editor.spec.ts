@@ -114,7 +114,8 @@ test('Image Editor: transform, adjust, colours, slice, crop, resize and save', a
   await app.settle()
   await app.js(`${byText('.studio-bar .btn', 'Save')}.click()`)
   const redOnTheRight = () => app.js<string>(`(async () => { const img = new Image(); img.crossOrigin = 'anonymous'; img.src = 'sprite://library/walk-sheet.png?v=' + Date.now(); await img.decode(); const c = document.createElement('canvas'); c.width = 32; c.height = 8; const x = c.getContext('2d'); x.drawImage(img, 0, 0); const d = x.getImageData(26, 3, 1, 1).data; return [d[0], d[1], d[2]].join() })()`)
-  const flipped = await app.until(async () => (await redOnTheRight()) === '255,0,0' && redOnTheRight())
+  // The file may still be being written, so a read that fails just means "not yet".
+  const flipped = await app.until(async () => ((await redOnTheRight().catch(() => '')) === '255,0,0' ? '255,0,0' : ''))
   const original = (await app.library()).items.find((i) => i.name === 'walk-sheet.png')!
   await check('overwrite save keeps tags', original.tags.join() === 'hero', original.tags)
   await check('saved file is flipped (red now on the right)', flipped === '255,0,0', flipped)

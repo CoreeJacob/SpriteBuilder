@@ -243,6 +243,20 @@ export class App {
     return [this.geo.left + (x + 0.5) * this.geo.zoom, this.geo.top + (y + 0.5) * this.geo.zoom]
   }
 
+  /** The window position of the corner between pixels at (x, y) — where selection handles sit. */
+  corner(x: number, y: number): Point {
+    return [this.geo.left + x * this.geo.zoom, this.geo.top + y * this.geo.zoom]
+  }
+
+  /** Presses at one window point, moves through the others and lets go there. */
+  async drag(points: Point[], modifiers = 0): Promise<void> {
+    await this.mouse('mouseMoved', points[0], { buttons: 0 })
+    await this.mouse('mousePressed', points[0], { modifiers })
+    for (const p of points.slice(1)) await this.mouse('mouseMoved', p, { modifiers })
+    await this.mouse('mouseReleased', points.at(-1)!, { modifiers })
+    await this.settle()
+  }
+
   async dragCells(from: Point, to: Point, modifiers = 0): Promise<void> {
     await this.mouse('mousePressed', this.cell(...from), { modifiers })
     await this.mouse('mouseMoved', this.cell(((from[0] + to[0]) / 2) | 0, ((from[1] + to[1]) / 2) | 0), { modifiers })

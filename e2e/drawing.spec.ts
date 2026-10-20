@@ -10,7 +10,11 @@ const openBrushMenu = (app: App) => app.js(`${byTip('.tool-popover .tool', 'Brus
 /** A freehand pencil drag through every listed cell, one pointer move per cell. */
 async function stroke(app: App, cells: Array<[number, number]>): Promise<void> {
   await app.mouse('mousePressed', app.cell(...cells[0]))
-  for (const c of cells.slice(1)) await app.mouse('mouseMoved', app.cell(...c))
+  // One move per frame: Chromium merges moves that arrive in the same frame, which would skip cells.
+  for (const c of cells.slice(1)) {
+    await app.mouse('mouseMoved', app.cell(...c))
+    await app.settle()
+  }
   await app.mouse('mouseReleased', app.cell(...cells.at(-1)!))
   await app.settle()
 }
@@ -61,7 +65,8 @@ test('pixel-perfect freehand lines', async ({ app }) => {
   await app.newSprite(16)
   await app.tool('b')
   await stroke(app, steps)
-  await check('without it, a jagged drag leaves the corner pixels', (await filled(app, steps)).every(Boolean))
+  const plain = await filled(app, steps)
+  await check('without it, a jagged drag leaves the corner pixels', plain.every(Boolean), plain)
   await app.undo()
 
   await openBrushMenu(app)
@@ -98,10 +103,10 @@ test('flip and rotate, from keys and menus', async ({ app }) => {
   await check('⇧R turns the selection a quarter turn about its centre', turned.join() === 'true,true,true,true,false,false', turned)
 
   // The toolbox menu (shown with the Select tool) does the same, for the whole layer here
-  await app.js(`${byTip('.tool-popover .tool', 'Flip or rotate')}.click()`)
+  await app.js(`${byTip('.tool-popover .tool', 'Flip, rotate or resize')}.click()`)
   await app.settle()
   const items = await app.js<string[]>(`[...document.querySelectorAll('.tool-popover .dropdown-item')].map(b => b.textContent.trim())`)
-  await check('the Select tool’s menu lists flips and turns with their keys', items.length === 4 && items[0].includes('⇧H') && items[3].includes('⌥⇧R'), items)
+  await check('the Select tool’s menu lists flips and turns with their keys, then sizes', items.length === 7 && items[0].includes('⇧H') && items[3].includes('⌥⇧R') && items[4] === 'Twice as big', items)
   await app.js(`${byText('.tool-popover .dropdown-item', 'Flip vertically')}.click()`)
   await app.settle()
   await check('Flip vertically from the menu flips the layer top to bottom', (await app.px(1, 14)) !== 'empty' && (await app.px(1, 1)) === 'empty')
