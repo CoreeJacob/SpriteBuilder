@@ -37,7 +37,7 @@ import {
   type Img
 } from './ops'
 import { MAX_EDIT_SIZE, useEditor } from './store'
-import { isTyping } from '@/lib/dom'
+import { isTyping, turnFromKey } from '@/lib/dom'
 
 const ZOOMS = [0.25, 0.5, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32]
 
@@ -92,9 +92,9 @@ function useEditorShortcuts(): void {
       if (e.metaKey && e.key.toLowerCase() === 's') {
         e.preventDefault()
         void (e.shiftKey ? saveCopy() : save())
-      } else if (e.shiftKey && !e.metaKey && ['KeyH', 'KeyV', 'KeyR'].includes(e.code)) {
+      } else if (turnFromKey(e)) {
         e.preventDefault()
-        turnImage(e.code === 'KeyH' ? 'flipH' : e.code === 'KeyV' ? 'flipV' : e.altKey ? 'rotateCCW' : 'rotateCW')
+        turnImage(turnFromKey(e)!)
       } else if (e.key === 'Enter' && s.mode === 'crop' && s.cropRect) {
         applyCrop()
       } else if (e.key === 'Escape') {

@@ -5,7 +5,6 @@ import { compositeAt } from './model'
 import {
   brushPoints,
   constrainEnd,
-  ellipsePoints,
   floodFillInRegion,
   getPixel,
   inRegion,
@@ -14,8 +13,8 @@ import {
   mirrorPoints,
   normalizeRect,
   parseHex,
-  rectPoints,
   setPixel,
+  shapePixels,
   toHex,
   TRANSPARENT,
   type RGBA
@@ -246,18 +245,19 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
     e.altKey && PICKS_WITH_ALT.includes(tool) ? 'eyedropper' : tool
 
   /** The pixels a list of brush positions reaches, with brush size, tile wrapping, mirroring and the selection as a stencil. */
-  const reach = (points: Cell[]): Cell[] => {
+  const reach = (points: Cell[], brushed: boolean): Cell[] => {
     const s = useStudio.getState()
     const clip = s.floating ? null : s.selection
-    const stamped = brushPoints(points, s.brushSize, s.brushShape).map(wrap)
+    const stamped = (brushed ? brushPoints(points, s.brushSize, s.brushShape) : points).map(wrap)
     return mirrorPoints(stamped, W, H, s.mirrorX, s.mirrorY).filter(([x, y]) => inRegion(clip, x, y))
   }
 
-  const plot = (points: Cell[], color: RGBA): void => {
+  /** Paints the brush at each point; `brushed: false` for pixels that already include the brush (shapes). */
+  const plot = (points: Cell[], color: RGBA, brushed = true): void => {
     const s = useStudio.getState()
     const cel = s.activeCel()
     if (!cel) return
-    for (const [x, y] of reach(points)) setPixel(cel, W, H, x, y, color)
+    for (const [x, y] of reach(points, brushed)) setPixel(cel, W, H, x, y, color)
     s.touch()
   }
 
@@ -265,20 +265,18 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
   const unplot = (points: Cell[], base: Uint8ClampedArray): void => {
     const cel = useStudio.getState().activeCel()
     if (!cel) return
-    for (const [x, y] of reach(points)) {
+    for (const [x, y] of reach(points, true)) {
       if (x < 0 || y < 0 || x >= W || y >= H) continue
       const i = (y * W + x) * 4
       cel.set(base.subarray(i, i + 4), i)
     }
   }
 
-  const shapePoints = (d: Extract<Drag, { kind: 'shape' }>, end: Cell, shift: boolean): Cell[] => {
+  const drawShape = (d: Extract<Drag, { kind: 'shape' }>, end: Cell, shift: boolean): void => {
     const [x0, y0] = d.start
-    const [x1, y1] = shift ? constrainEnd(x0, y0, end[0], end[1], d.tool === 'line' ? 'line' : 'box') : end
-    const filled = useStudio.getState().fillShapes
-    if (d.tool === 'line') return linePoints(x0, y0, x1, y1)
-    if (d.tool === 'rect') return rectPoints(x0, y0, x1, y1, filled)
-    return ellipsePoints(x0, y0, x1, y1, filled)
+    const corner = shift ? constrainEnd(x0, y0, end[0], end[1], d.tool === 'line' ? 'line' : 'box') : end
+    const { fillShapes, brushSize, brushShape } = useStudio.getState()
+    plot(shapePixels(d.tool, d.start, corner, fillShapes, brushSize, brushShape), d.color, false)
   }
 
   const onPointerDown = (e: PointerEvent<HTMLCanvasElement>): void => {
@@ -341,7 +339,7 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
       if (!cel) return
       const d: Drag = { kind: 'shape', done, tool: current, start: cell, base: cel.slice(), color }
       drag.current = d
-      plot(shapePoints(d, cell, e.shiftKey), color)
+      drawShape(d, cell, e.shiftKey)
       return
     }
 
@@ -384,11 +382,11 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
       d.last = cell
     } else if (d.kind === 'shape') {
       s.activeCel()?.set(d.base)
-      plot(shapePoints(d, cell, e.shiftKey), d.color)
+      drawShape(d, cell, e.shiftKey)
     } else if (d.kind === 'select') {
       const [l, t, r, b] = normalizeRect(...d.anchor, ...clampCell(unoffset(cell)))
       d.moved = true
-      useStudio.setState({ selection: { x: l, y: t, w: r - l + 1, h: b - t + 1 }, version: s.version + 1 })
+      useStudio.setState({ selection: { x: l, y: t, w: r - l + 1, h: b - t + 1 } })
     } else {
       s.moveFloating(d.origin[0] + cell[0] - d.startCell[0], d.origin[1] + cell[1] - d.startCell[1])
     }

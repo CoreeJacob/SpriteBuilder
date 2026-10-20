@@ -129,5 +129,8 @@ export interface SpriteBuilderApi {
   onMenuCommand(callback: (command: MenuCommand) => void): () => void
 }
 
-export type TurnCommand = 'flipH' | 'flipV' | 'rotateCW' | 'rotateCCW'
+/** Edit-menu flips and quarter turns, sent to whichever screen is showing. */
+const TURN_COMMANDS = ['flipH', 'flipV', 'rotateCW', 'rotateCCW'] as const
+export type TurnCommand = (typeof TURN_COMMANDS)[number]
+export const isTurnCommand = (command: string): command is TurnCommand => (TURN_COMMANDS as readonly string[]).includes(command)
 export type MenuCommand = 'undo' | 'redo' | 'selectAll' | 'backup' | 'restore' | 'shortcuts' | TurnCommand

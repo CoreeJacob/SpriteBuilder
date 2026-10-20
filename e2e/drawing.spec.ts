@@ -6,13 +6,13 @@ const filled = async (app: App, cells: Array<[number, number]>) => {
   return out
 }
 const brushLabel = (app: App) => app.js<string>(`document.querySelector('.tool-popover .brush-size')?.textContent ?? ''`)
-const openBrushMenu = (app: App) => app.js(`${byTip('.tool-popover .tool', 'Brush')}.click()`).then(() => app.wait(120))
+const openBrushMenu = (app: App) => app.js(`${byTip('.tool-popover .tool', 'Brush')}.click()`).then(() => app.settle())
 /** A freehand pencil drag through every listed cell, one pointer move per cell. */
 async function stroke(app: App, cells: Array<[number, number]>): Promise<void> {
   await app.mouse('mousePressed', app.cell(...cells[0]))
   for (const c of cells.slice(1)) await app.mouse('mouseMoved', app.cell(...c))
   await app.mouse('mouseReleased', app.cell(...cells.at(-1)!))
-  await app.wait(80)
+  await app.settle()
 }
 
 test('brush sizes and shapes', async ({ app }) => {
@@ -31,8 +31,7 @@ test('brush sizes and shapes', async ({ app }) => {
 
   await openBrushMenu(app)
   await app.js(`${byText('.tool-popover .chip', 'Round')}.click()`)
-  await app.js(`document.querySelector('.menu-scrim').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`)
-  await app.wait(80)
+  await app.closeMenu()
   await app.click(5, 5)
   const round = await filled(app, [[5, 4], [4, 5], [5, 5], [4, 4], [6, 6]])
   await check('a 3px round brush paints a plus (no corners)', round.join() === 'true,true,true,false,false', round)
@@ -67,8 +66,7 @@ test('pixel-perfect freehand lines', async ({ app }) => {
 
   await openBrushMenu(app)
   await app.js(`document.querySelector('.tool-popover input[type=checkbox]').click()`)
-  await app.js(`document.querySelector('.menu-scrim').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`)
-  await app.wait(80)
+  await app.closeMenu()
   await stroke(app, steps)
   const result = await filled(app, steps)
   await check('with it, only the clean diagonal stays', result.join() === 'true,false,true,false,true,false,true', result)
@@ -101,23 +99,22 @@ test('flip and rotate, from keys and menus', async ({ app }) => {
 
   // The toolbox menu (shown with the Select tool) does the same, for the whole layer here
   await app.js(`${byTip('.tool-popover .tool', 'Flip or rotate')}.click()`)
-  await app.wait(120)
+  await app.settle()
   const items = await app.js<string[]>(`[...document.querySelectorAll('.tool-popover .dropdown-item')].map(b => b.textContent.trim())`)
   await check('the Select tool’s menu lists flips and turns with their keys', items.length === 4 && items[0].includes('⇧H') && items[3].includes('⌥⇧R'), items)
   await app.js(`${byText('.tool-popover .dropdown-item', 'Flip vertically')}.click()`)
-  await app.wait(120)
+  await app.settle()
   await check('Flip vertically from the menu flips the layer top to bottom', (await app.px(1, 14)) !== 'empty' && (await app.px(1, 1)) === 'empty')
 
   // The app's Edit menu lists them, and its commands reach the Studio
   const editMenu = (await app.main(({ Menu }) => Menu.getApplicationMenu()!.items.find((i) => i.label === 'Edit')!.submenu!.items.map((i) => i.label), null)) as string[]
   await check('Edit menu has Flip and Rotate', ['Flip Horizontally', 'Flip Vertically', 'Rotate 90° Right', 'Rotate 90° Left'].every((l) => editMenu.includes(l)), editMenu)
-  await app.main(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.send('menu:command', 'flipV'), null)
-  await app.wait(150)
+  await app.menuCommand('flipV')
   await check('Edit ▸ Flip Vertically works in the Studio', (await app.px(1, 1)) !== 'empty' && (await app.px(1, 14)) === 'empty')
 
   // Typing a capital letter in a text box must not flip anything
   await app.js(`document.querySelector('.layer-row .layer-name').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`)
-  await app.wait(150)
+  await app.settle()
   await app.key('H', 'KeyH', SHIFT)
   await app.key('Escape', 'Escape')
   await check('⇧H while renaming a layer doesn’t flip the drawing', (await app.px(1, 1)) !== 'empty' && (await app.px(14, 1)) === 'empty')
@@ -130,14 +127,9 @@ test('flip and rotate, from keys and menus', async ({ app }) => {
 })
 
 test('the Image Editor flips and turns with the same keys', async ({ app }) => {
-  const dims = () => app.js<string>(`document.querySelector('.editor-status span').textContent.trim()`)
-  await app.js(`[...document.querySelectorAll('.rail-btn')][2].click()`)
-  await app.wait(300)
-  await app.js(`${byTip('.picker-grid .card', 'walk-sheet.png')}.click()`)
-  await app.wait(600)
+  await app.openInEditor('walk-sheet.png')
   await app.key('R', 'KeyR', SHIFT)
-  await check('⇧R turns the image (32×8 → 8×32)', (await dims()) === '8×32 px', await dims())
-  await app.main(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.send('menu:command', 'rotateCCW'), null)
-  await app.wait(150)
-  await check('Edit ▸ Rotate 90° Left turns it back', (await dims()) === '32×8 px', await dims())
+  await check('⇧R turns the image (32×8 → 8×32)', (await app.editorSize()) === '8×32 px', await app.editorSize())
+  await app.menuCommand('rotateCCW')
+  await check('Edit ▸ Rotate 90° Left turns it back', (await app.editorSize()) === '32×8 px', await app.editorSize())
 })

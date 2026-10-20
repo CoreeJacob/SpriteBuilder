@@ -1,9 +1,14 @@
 // Launches SpriteBuilder on a fresh library and drives it the way a person would:
 // real mouse and keyboard events through the DevTools protocol, plus DOM and pixel checks.
+//
+// Waiting: prefer `until` (poll for the thing that should happen) and `settle` (let React and
+// the canvas catch up after an input) over fixed sleeps, so tests are quick and don't depend
+// on how busy the Mac is.
 
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { _electron as electron, expect, test as base, type CDPSession, type ElectronApplication, type Page } from '@playwright/test'
+import type { MenuCommand } from '../../src/shared/types'
 import { grass, seedLibrary } from './seed'
 
 const ROOT = path.resolve(__dirname, '../..')
@@ -19,10 +24,10 @@ export interface Dirs {
 
 type MouseType = 'mousePressed' | 'mouseMoved' | 'mouseReleased'
 type Point = [number, number]
+type Screen = 'Library' | 'Pixel Studio' | 'Image Editor'
 
 /** Modifier bits for the DevTools protocol. */
 export const ALT = 1
-export const CTRL = 2
 export const META = 4
 export const SHIFT = 8
 
@@ -39,9 +44,12 @@ export const menuItem = (label: string): string =>
 export const sidebar = (label: string): string =>
   `[...document.querySelectorAll('.sidebar-entry')].find(e => e.querySelector('.entry-label')?.textContent === ${JSON.stringify(label)})`
 /** A `w(ms)` sleep for use inside page snippets. */
-export const W = 'const w = ms => new Promise(r => setTimeout(r, ms));'
+const W = 'const w = ms => new Promise(r => setTimeout(r, ms));'
+/** Sets a React-controlled input's value inside a page snippet, as if typed. */
+const typeInto = (input: string, value: string): string =>
+  `{ const i = ${input}; Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, ${JSON.stringify(value)}); i.dispatchEvent(new Event('input', { bubbles: true })) }`
 
-export const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
+const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
 /** One named check. Failures are recorded and the test carries on, so one run reports every problem. */
 export async function check(name: string, ok: unknown, detail: unknown = ''): Promise<void> {
@@ -110,7 +118,35 @@ export class App {
     return this.electron.evaluate(fn as never, arg)
   }
 
+  /** Sends a command from the app's menu bar (the same message a menu click sends). */
+  menuCommand(command: MenuCommand): Promise<void> {
+    return this.main(({ BrowserWindow }, c) => BrowserWindow.getAllWindows()[0].webContents.send('menu:command', c), command).then(() => this.settle())
+  }
+
   wait = wait
+
+  /**
+   * Polls until `probe` gives something truthy (or the time runs out) and returns its last value,
+   * so the check that follows can report what it saw.
+   */
+  async until<T>(probe: () => Promise<T> | T, timeout = 5000): Promise<T> {
+    const end = Date.now() + timeout
+    for (;;) {
+      const value = await probe()
+      if (value || Date.now() > end) return value
+      await wait(40)
+    }
+  }
+
+  /** `until` for a page expression. */
+  untilJs<T = any>(expr: string, timeout?: number): Promise<T> {
+    return this.until(() => this.js<T>(expr), timeout)
+  }
+
+  /** Lets React finish updating and the canvas redraw (two animation frames). */
+  settle(): Promise<void> {
+    return this.js(`new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r(1))))`)
+  }
 
   // ---------- mouse and keyboard ----------
 
@@ -122,12 +158,12 @@ export class App {
   async clickAt(x: number, y: number, button: 'left' | 'right' = 'left', modifiers = 0): Promise<void> {
     await this.call('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y })
     for (const type of ['mousePressed', 'mouseReleased']) await this.call('Input.dispatchMouseEvent', { type, x, y, button, clickCount: 1, modifiers })
-    await wait(150)
+    await this.settle()
   }
 
   async hover(x: number, y: number): Promise<void> {
     await this.call('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y })
-    await wait(150)
+    await this.settle()
   }
 
   /** The centre of the element a snippet finds, in window coordinates. */
@@ -135,11 +171,34 @@ export class App {
     return this.js(`(() => { const r = (${expr}).getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2] })()`)
   }
 
+  async rightClick(expr: string): Promise<void> {
+    const [x, y] = await this.centre(expr)
+    await this.clickAt(x, y, 'right')
+  }
+
+  async dblclick(expr: string): Promise<void> {
+    await this.js(`${expr}.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`)
+    await this.settle()
+  }
+
+  /**
+   * An in-app drag from one element to another (layers, frames, folders). Returns whether the
+   * target accepted it. `at` places the pointer, e.g. `{ clientY: 'top + 3' }`.
+   */
+  dragDrop(from: string, to: string, { at = {}, drop = true }: { at?: { clientX?: string; clientY?: string }; drop?: boolean } = {}): Promise<boolean> {
+    const point = Object.entries(at).map(([k, v]) => `${k}: r.${v}`).join(', ')
+    return this.js<boolean>(`(() => { const from = ${from}; const to = ${to}; const dt = new DataTransfer(); const r = to.getBoundingClientRect()
+      from.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt }))
+      const over = new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt, ${point} }); to.dispatchEvent(over)
+      if (${drop}) to.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt, ${point} }))
+      from.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: dt })); return over.defaultPrevented })()`)
+  }
+
   async key(key: string, code: string, modifiers = 0): Promise<void> {
     const windowsVirtualKeyCode = key.length === 1 ? key.toUpperCase().charCodeAt(0) : key === 'Escape' ? 27 : key === 'Enter' ? 13 : undefined
     await this.call('Input.dispatchKeyEvent', { type: 'keyDown', key, code, modifiers, windowsVirtualKeyCode })
     await this.call('Input.dispatchKeyEvent', { type: 'keyUp', key, code, modifiers })
-    await wait(80)
+    await this.settle()
   }
 
   /** Picks a Pixel Studio tool by its shortcut letter. */
@@ -147,15 +206,36 @@ export class App {
     return this.key(letter, 'Key' + letter.toUpperCase())
   }
 
-  // ---------- Pixel Studio canvas ----------
+  // ---------- screens and menus ----------
+
+  /** Switches screen with the sidebar on the left. */
+  async goTo(screen: Screen): Promise<void> {
+    await this.js(`${byTip('.rail-btn', screen)}.click()`)
+    await this.untilJs(`document.querySelector('.rail-btn.active')?.getAttribute('title') === ${JSON.stringify(screen)}`)
+    await this.settle()
+  }
+
+  /** Closes an open dropdown menu by clicking beside it. */
+  async closeMenu(): Promise<void> {
+    await this.js(`document.querySelector('.menu-scrim')?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); 1`)
+    await this.settle()
+  }
+
+  // ---------- Pixel Studio ----------
 
   private geo = { left: 0, top: 0, zoom: 1 }
 
-  /** Re-reads where the sprite canvas is on screen; call after it changes size or moves. */
+  /**
+   * Re-reads where the sprite canvas is on screen; call after it changes size or moves.
+   * Waits until it has stopped moving (it settles into place a moment after it appears).
+   */
   async regeo(size: number): Promise<void> {
-    this.geo = await this.js(
-      `(() => { const r = document.querySelector('.pixel-canvas').getBoundingClientRect(); return { left: r.left, top: r.top, zoom: r.width / ${size} } })()`
-    )
+    this.geo = await this.untilJs(`(async () => {
+      const box = () => { const r = document.querySelector('.pixel-canvas')?.getBoundingClientRect(); return r ? [r.left, r.top, r.width].join() : '' }
+      const first = box()
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+      const r = document.querySelector('.pixel-canvas')?.getBoundingClientRect()
+      return r && r.width === ${size} * Math.round(r.width / ${size}) && box() === first ? { left: r.left, top: r.top, zoom: r.width / ${size} } : null })()`)
   }
 
   /** The window position of a sprite pixel's centre. */
@@ -168,7 +248,7 @@ export class App {
     await this.mouse('mouseMoved', this.cell(((from[0] + to[0]) / 2) | 0, ((from[1] + to[1]) / 2) | 0), { modifiers })
     await this.mouse('mouseMoved', this.cell(...to), { modifiers })
     await this.mouse('mouseReleased', this.cell(...to), { modifiers })
-    await wait(80)
+    await this.settle()
   }
 
   click(x: number, y: number, modifiers = 0): Promise<void> {
@@ -186,45 +266,98 @@ export class App {
   /** Starts a new square sprite in Pixel Studio. */
   async newSprite(size: number): Promise<void> {
     await this.js(`window.confirm = () => true; document.activeElement?.blur(); 1`)
-    await this.js(`(async () => { ${W} ;[...document.querySelectorAll('.rail-btn')][1].click(); await w(300)
-      const n = ${byText('.studio-bar .btn', 'New')}; if (n) { n.click(); await w(200) }
-      ;[...document.querySelectorAll('.preset')].find(p => p.textContent === '${size}×${size}').click(); await w(120)
-      ;[...document.querySelectorAll('.btn')].find(b => b.textContent === 'Create').click(); return 1 })()`)
-    await wait(300)
+    await this.goTo('Pixel Studio')
+    await this.js(`${byText('.studio-bar .btn', 'New')}?.click(); 1`)
+    await this.untilJs(`!!document.querySelector('.preset')`)
+    await this.js(`[...document.querySelectorAll('.preset')].find(p => p.textContent === '${size}×${size}').click()`)
+    await this.settle()
+    await this.js(`[...document.querySelectorAll('.btn')].find(b => b.textContent === 'Create').click()`)
+    await this.untilJs(`!document.querySelector('.preset') && document.querySelector('.canvas-info dd')?.textContent === '${size}×${size}'`)
+    await this.settle()
     await this.regeo(size)
   }
 
   /** Undo and Redo through the toolbar buttons: ⌘Z belongs to the app menu, which these events don't reach. */
   async undo(): Promise<void> {
     await this.js(`${byTip('.studio-bar button', 'Undo')}.click()`)
-    await wait(150)
+    await this.settle()
   }
 
   async redo(): Promise<void> {
     await this.js(`${byTip('.studio-bar button', 'Redo')}.click()`)
-    await wait(150)
+    await this.settle()
+  }
+
+  async addFrame(): Promise<void> {
+    await this.js(`${byTip('.timeline button', 'New empty frame')}.click()`)
+    await this.settle()
+  }
+
+  /** Export ▸ Sprite sheet… */
+  async openSheetDialog(): Promise<void> {
+    await this.js(`${byText('.studio-bar .btn', 'Export')}.click()`)
+    await this.settle()
+    await this.js(`${byText('.dropdown-item', 'Sprite sheet')}.click()`)
+    await this.untilJs(`!!document.querySelector('.sheet-dialog')`)
+  }
+
+  /** Sets the front (drawing) colour. */
+  async setColour(hex: string): Promise<void> {
+    await this.js(`(() => { const i = document.querySelector('.swatch-big.primary input'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, ${JSON.stringify(hex)}); i.dispatchEvent(new Event('input', { bubbles: true })); return 1 })()`)
+    await this.settle()
   }
 
   docInfo(): Promise<string | undefined> {
     return this.js(`document.querySelector('.canvas-info dd')?.textContent`)
   }
 
+  // ---------- Image Editor ----------
+
+  /** Opens a library image from the Image Editor's picker. */
+  async openInEditor(file: string): Promise<void> {
+    await this.goTo('Image Editor')
+    await this.js(`${byText('.studio-bar .btn', 'Open')}?.click(); 1`)
+    await this.untilJs(`!!${byTip('.picker-grid .card', file)}`)
+    await this.js(`${byTip('.picker-grid .card', file)}.click()`)
+    await this.untilJs(`(document.querySelector('.doc-name')?.textContent ?? '').startsWith(${JSON.stringify(file)})`)
+    await this.settle()
+  }
+
+  /** The Image Editor's size readout, like '32×8 px'. */
+  editorSize(): Promise<string> {
+    return this.js(`document.querySelector('.editor-status span').textContent.trim()`)
+  }
+
   // ---------- forms and dialogs ----------
 
-  /** Types into the open prompt's text box and confirms it. */
-  async answer(text: string): Promise<void> {
-    await wait(200)
-    await this.js(`(async () => { const i = document.querySelector('.modal input'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, ${JSON.stringify(text)}); i.dispatchEvent(new Event('input', { bubbles: true })); await new Promise(r => setTimeout(r, 80)); document.querySelector('.modal button[type=submit]').click(); return 1 })()`)
-    await wait(600)
+  /** Fills in the open prompt (name, and optionally folder and new-folder name), confirms it, and waits for it to close. */
+  async answer(text: string, { folder, newFolder }: { folder?: string; newFolder?: string } = {}): Promise<string | undefined> {
+    await this.untilJs(`!!document.querySelector('.modal input')`)
+    const label = await this.js<string | undefined>(`(async () => { ${W}
+      ${folder === undefined ? '' : `const s = document.querySelector('.modal select'); s.value = ${folder === 'new' ? 's.options[s.options.length - 1].value' : JSON.stringify(folder)}; s.dispatchEvent(new Event('change', { bubbles: true })); await w(50)`}
+      ${typeInto(`document.querySelectorAll('.modal input')[0]`, text)}
+      ${newFolder === undefined ? '' : typeInto(`document.querySelectorAll('.modal input')[1]`, newFolder)}
+      await w(50); const label = document.querySelector('.modal p')?.textContent
+      document.querySelector('.modal button[type=submit]').click(); return label })()`)
+    await this.untilJs(`!document.querySelector('.modal input')`)
+    await this.settle()
+    return label
   }
 
   /** Sets a React-controlled input's value as if typed. */
   async setInput(selector: string, value: string): Promise<void> {
-    await this.js(`(async () => { const i = ${selector}; const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(i, ${JSON.stringify(value)}); i.dispatchEvent(new Event('input', { bubbles: true })); await new Promise(r => setTimeout(r, 80)); return 1 })()`)
+    await this.js(`(() => { ${typeInto(selector, value)}; return 1 })()`)
+    await this.settle()
   }
 
   toasts(): Promise<string> {
     return this.js(`[...document.querySelectorAll('.toast')].map(t => t.textContent).join(' | ')`)
+  }
+
+  /** Waits for a message containing `text` and returns all the messages shown. */
+  async toast(text: string): Promise<string> {
+    await this.until(async () => (await this.toasts()).includes(text))
+    return this.toasts()
   }
 
   /** Makes the next native Save dialogs answer with these paths, in order. */
@@ -257,6 +390,11 @@ export class App {
     return (await this.library()).items.some((i) => i.path === p)
   }
 
+  /** Waits for a library path to appear (or, with `present: false`, to go) and says whether it did. */
+  async waitForItem(p: string, present = true): Promise<boolean> {
+    return this.until(async () => (await this.has(p)) === present)
+  }
+
   /** Library paths whose file name starts with `prefix`, sorted. */
   async files(prefix: string): Promise<string[]> {
     return (await this.library()).items.filter((i) => i.name.startsWith(prefix)).map((i) => i.path).sort()
@@ -264,12 +402,18 @@ export class App {
 
   /** Copies a library image to a new name in the library root (through the app, like an import). */
   async importCopy(from: string, name: string): Promise<void> {
-    await this.js(`(async () => { ${W} await window.api.importData('', [{ name: ${JSON.stringify(name)}, data: new Uint8Array(await (await fetch('sprite://library/${from}')).arrayBuffer()) }]); await w(500); return 1 })()`)
+    // The import finishes once the file is in the library, so no extra waiting is needed.
+    await this.js(`(async () => { await window.api.importData('', [{ name: ${JSON.stringify(name)}, data: new Uint8Array(await (await fetch('sprite://library/${from}')).arrayBuffer()) }]); return 1 })()`)
   }
 
-  /** The Library tab, showing All Images as a grid. */
-  async showAll(): Promise<void> {
-    await this.js(`(async () => { ${W} ;[...document.querySelectorAll('.rail-btn')][0].click(); await w(300); ${sidebar('All Images')}.click(); await w(300); document.querySelector('[title="Grid view"], [data-tip="Grid view"]')?.click(); await w(200); return 1 })()`)
+  /** The Library tab, showing All Images as a grid (and, if given, waits for that image's card). */
+  async showAll(file?: string): Promise<void> {
+    await this.goTo('Library')
+    await this.js(`${sidebar('All Images')}.click()`)
+    await this.untilJs(`document.querySelector('.lib-header h1')?.textContent === 'All Images'`)
+    await this.js(`document.querySelector('[title="Grid view"], [data-tip="Grid view"]')?.click(); 1`)
+    await this.untilJs(file ? `!!${card(file)}` : `!!document.querySelector('.card')`)
+    await this.settle()
   }
 }
 
@@ -288,5 +432,3 @@ export const test = base.extend<{ app: App }>({
     await app.close()
   }
 })
-
-export { expect }

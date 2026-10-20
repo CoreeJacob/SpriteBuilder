@@ -4,21 +4,22 @@ import {
   brushOffsets,
   brushPoints,
   changedRegion,
-  isCorner,
-  turnPixels,
   constrainEnd,
   ellipsePoints,
   extractRegion,
+  fitWithin,
   floodFill,
   floodFillInRegion,
-  fitWithin,
   getPixel,
+  isCorner,
   linePoints,
   mirrorPoints,
   parseHex,
   rectPoints,
   setPixel,
+  shapePixels,
   toHex,
+  turnPixels,
   uniqueColors
 } from './raster'
 
@@ -219,5 +220,25 @@ describe('isCorner (pixel-perfect)', () => {
     expect(isCorner([0, 0], [1, 0], [2, 0])).toBe(false)
     expect(isCorner([0, 0], [1, 1], [2, 2])).toBe(false)
     expect(isCorner([0, 0], [1, 0], [2, 1])).toBe(false)
+  })
+})
+
+describe('shapePixels', () => {
+  const key = (cells: Array<[number, number]>) => new Set(cells.map(([x, y]) => `${x},${y}`))
+
+  it('a filled shape paints the same pixels as brushing every pixel inside it would', () => {
+    for (const [tool, size, shape] of [['rect', 3, 'square'], ['rect', 4, 'round'], ['ellipse', 5, 'round'], ['ellipse', 2, 'square']] as const) {
+      const solid = tool === 'rect' ? rectPoints(2, 3, 14, 11, true) : ellipsePoints(2, 3, 14, 11, true)
+      const fast = key(shapePixels(tool, [2, 3], [14, 11], true, size, shape))
+      const slow = key(brushPoints(solid, size, shape))
+      expect([...fast].sort(), `${tool} ${size}px ${shape}`).toEqual([...slow].sort())
+    }
+  })
+
+  it('a big filled shape with a big brush stays quick', () => {
+    const start = performance.now()
+    shapePixels('rect', [0, 0], [511, 511], true, 8, 'square')
+    shapePixels('ellipse', [0, 0], [511, 511], true, 8, 'round')
+    expect(performance.now() - start).toBeLessThan(100) // was about 700 ms per mouse move
   })
 })

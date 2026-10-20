@@ -428,17 +428,36 @@ export function brushOffsets(size: number, shape: BrushShape): Array<[number, nu
 export function brushPoints(points: Array<[number, number]>, size: number, shape: BrushShape): Array<[number, number]> {
   if (size <= 1) return points
   const offsets = brushOffsets(size, shape)
-  const seen = new Set<string>()
+  const seen = new Set<number>()
   const out: Array<[number, number]> = []
   for (const [x, y] of points) {
     for (const [dx, dy] of offsets) {
-      const key = `${x + dx},${y + dy}`
+      // One number per pixel (tile mode can reach a little past the canvas, so allow negatives).
+      const key = (x + dx + 0x8000) * 0x10000 + (y + dy + 0x8000)
       if (seen.has(key)) continue
       seen.add(key)
       out.push([x + dx, y + dy])
     }
   }
   return out
+}
+
+/**
+ * Every pixel a line, rectangle or ellipse paints with the brush. A filled shape only brushes
+ * its edge, since its inside is solid anyway (brushing every inside pixel of a big shape was slow).
+ */
+export function shapePixels(
+  tool: 'line' | 'rect' | 'ellipse',
+  [x0, y0]: [number, number],
+  [x1, y1]: [number, number],
+  filled: boolean,
+  size: number,
+  shape: BrushShape
+): Array<[number, number]> {
+  if (tool === 'line') return brushPoints(linePoints(x0, y0, x1, y1), size, shape)
+  const outline = (solid: boolean) => (tool === 'rect' ? rectPoints(x0, y0, x1, y1, solid) : ellipsePoints(x0, y0, x1, y1, solid))
+  const edge = brushPoints(outline(false), size, shape)
+  return filled ? outline(true).concat(size > 1 ? edge : []) : edge
 }
 
 /**

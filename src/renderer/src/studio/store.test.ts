@@ -202,3 +202,20 @@ describe('flip and rotate', () => {
     expect(state().floating).toMatchObject({ w: 4, h: 8 })
   })
 })
+
+describe('display-only settings', () => {
+  it('don’t count as changes to the pixels (no redraw of thumbnails, nothing for autosave)', () => {
+    useStudio.getState().newDoc(8, 8)
+    const before = useStudio.getState().version
+    const s = useStudio.getState()
+    s.setBrushSize(4)
+    s.setBrushShape('round')
+    s.toggleMirrorX()
+    s.toggleMirrorY()
+    s.toggleOnionSkin()
+    s.setSelection({ x: 1, y: 1, w: 3, h: 3 })
+    s.setSelection(null)
+    expect(useStudio.getState().version).toBe(before)
+    expect(useStudio.getState().dirty).toBe(false)
+  })
+})

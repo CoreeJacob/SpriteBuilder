@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { isTurnCommand } from '@shared/types'
 import { useEnrichment } from '@/library/enrich'
 import { LibraryView } from '@/library/LibraryView'
 import { EditorView } from '@/editor/EditorView'
@@ -49,7 +50,7 @@ export function App() {
         if (command === 'backup') return void backupLibrary()
         if (command === 'restore') return void restoreLibrary()
         if (command === 'shortcuts') return useApp.getState().setShowShortcuts(!useApp.getState().showShortcuts)
-        if (command === 'flipH' || command === 'flipV' || command === 'rotateCW' || command === 'rotateCCW') {
+        if (isTurnCommand(command)) {
           if (view === 'studio') useStudio.getState().turn(command)
           else if (view === 'editor') turnImage(command)
           return

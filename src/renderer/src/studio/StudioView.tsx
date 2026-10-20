@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Icon, type IconName } from '@/app/Icon'
+import { Dropdown } from '@/app/Dropdown'
+import { Icon } from '@/app/Icon'
 import { stripExt } from '@shared/paths'
 import { useApp } from '@/app/store'
 import { readPastedImage, writeSystemClipboard } from './clipboard'
 import { confirmDiscard, exportGif, exportPng, insertImage, saveSprite } from './io'
 import { CanvasSizeDialog } from './CanvasSizeDialog'
+import { ToolBox, TOOLS } from './ToolBox'
 import { LayersPanel } from './LayersPanel'
 import { PalettePanel } from './PalettePanel'
 import { useSavedPalettes } from './savedPalettes'
@@ -13,21 +15,10 @@ import { Timeline } from './Timeline'
 import { compositeAt, MAX_SIZE } from './model'
 import { PALETTES } from './palettes'
 import { PixelCanvas } from './PixelCanvas'
-import { countColors, MAX_BRUSH, rankColors, toHex, type Turn } from './raster'
-import { BRUSH_TOOLS, fitZoom, SHAPE_TOOLS, useStudio, ZOOM_LEVELS, type Tool } from './store'
+import { countColors, rankColors, toHex } from './raster'
+import { fitZoom, useStudio, ZOOM_LEVELS } from './store'
 import { pixelsToCanvas, scaleCanvas } from '@/lib/canvas'
-import { isTyping } from '@/lib/dom'
-
-const TOOLS: Array<{ tool: Tool; icon: IconName; label: string; key: string; groupStart?: boolean }> = [
-  { tool: 'pencil', icon: 'pencil', label: 'Pencil', key: 'B' },
-  { tool: 'eraser', icon: 'eraser', label: 'Eraser', key: 'E' },
-  { tool: 'fill', icon: 'fill', label: 'Fill', key: 'G' },
-  { tool: 'eyedropper', icon: 'eyedropper', label: 'Eyedropper', key: 'I' },
-  { tool: 'line', icon: 'line', label: 'Line · ⇧ snaps to 45°', key: 'L', groupStart: true },
-  { tool: 'rect', icon: 'rect', label: 'Rectangle · ⇧ for a square', key: 'R' },
-  { tool: 'ellipse', icon: 'ellipse', label: 'Ellipse · ⇧ for a circle', key: 'O' },
-  { tool: 'select', icon: 'select', label: 'Select · drag inside to move, ⌥-drag to copy', key: 'M', groupStart: true }
-]
+import { isTyping, turnFromKey } from '@/lib/dom'
 
 /** Image files dragged in from Finder land on a new layer, like Insert Image. */
 function CanvasDropZone({ children }: { children: React.ReactNode }) {
@@ -60,14 +51,6 @@ function CanvasDropZone({ children }: { children: React.ReactNode }) {
     </div>
   )
 }
-
-/** Flips and quarter turns, with the keys that do them (handled in useStudioShortcuts). */
-const TURNS: Array<{ turn: Turn; icon: IconName; label: string; keys: string }> = [
-  { turn: 'flipH', icon: 'flipH', label: 'Flip horizontally', keys: '⇧H' },
-  { turn: 'flipV', icon: 'flipV', label: 'Flip vertically', keys: '⇧V' },
-  { turn: 'rotateCW', icon: 'rotateCW', label: 'Rotate 90° right', keys: '⇧R' },
-  { turn: 'rotateCCW', icon: 'rotateCCW', label: 'Rotate 90° left', keys: '⌥⇧R' }
-]
 
 const PRESETS = [8, 16, 32, 64, 128]
 const EXPORT_SCALES = [1, 2, 4, 8, 16]
@@ -161,12 +144,7 @@ function useStudioShortcuts(openNew: () => void): void {
       }
       if (e.key === 'Escape') return s.deselect()
       if (e.key === 'Enter') return s.commitFloating()
-      // ⇧H/⇧V flip and ⇧R/⌥⇧R turn the selection (or the layer). Key codes, since ⌥ changes the letter.
-      const turn: Turn | null = !e.shiftKey ? null
-        : e.code === 'KeyH' ? 'flipH'
-        : e.code === 'KeyV' ? 'flipV'
-        : e.code === 'KeyR' ? (e.altKey ? 'rotateCCW' : 'rotateCW')
-        : null
+      const turn = turnFromKey(e)
       if (turn) {
         e.preventDefault()
         return s.turn(turn)
@@ -324,21 +302,19 @@ function ExportMenu({ onSheet }: { onSheet: () => void }) {
   const frames = useStudio((s) => s.doc?.frames.length ?? 1)
   const ranged = useStudio((s) => s.rangeStart !== null)
   const [rangeFrom, rangeTo] = useStudio.getState().frameRange()
-  const [open, setOpen] = useState(false)
   const [scale, setScale] = useState(4)
-  const run = (action: () => void): void => {
-    setOpen(false)
-    action()
-  }
   return (
-    <div className="menu-anchor">
-      <button className={`btn ${open ? 'on' : ''}`} onClick={() => setOpen(!open)} title="Export to a file on your Mac">
-        <Icon name="export" /> Export
-      </button>
-      {open && (
-        <>
-          <div className="menu-scrim" onMouseDown={() => setOpen(false)} />
-          <div className="dropdown">
+    <Dropdown
+      button={(open, toggle) => (
+        <button className={`btn ${open ? 'on' : ''}`} onClick={toggle} title="Export to a file on your Mac">
+          <Icon name="export" /> Export
+        </button>
+      )}
+    >
+      {(close) => {
+        const run = (action: () => void): void => (close(), action())
+        return (
+          <>
             <div className="dropdown-label">Scale</div>
             <div className="filter-options">
               {EXPORT_SCALES.map((n) => (
@@ -362,126 +338,10 @@ function ExportMenu({ onSheet }: { onSheet: () => void }) {
             <button className="dropdown-item" onClick={() => run(onSheet)}>
               <Icon name="grid" /> Sprite sheet… <span className="muted small">PNG + JSON</span>
             </button>
-          </div>
-        </>
-      )}
-    </div>
-  )
-}
-
-function ToolBox() {
-  const tool = useStudio((s) => s.tool)
-  const primary = useStudio((s) => s.primary)
-  const secondary = useStudio((s) => s.secondary)
-  const fillShapes = useStudio((s) => s.fillShapes)
-  const { setTool, setPrimary, setSecondary, swapColors, toggleFillShapes } = useStudio.getState()
-
-  return (
-    <div className="toolbox">
-      {TOOLS.map((t) => (
-        <div key={t.tool} className="tool-slot">
-          {t.groupStart && <div className="tool-divider" />}
-          <button className={`tool ${tool === t.tool ? 'on' : ''}`} onClick={() => setTool(t.tool)} title={`${t.label} (${t.key})`}>
-            <Icon name={t.icon} size={20} />
-          </button>
-          {t.tool === 'select' && tool === 'select' && <TurnMenu />}
-          {t.tool === 'ellipse' && SHAPE_TOOLS.includes(tool) && (
-            <button
-              className={`tool small ${fillShapes ? 'on' : ''}`}
-              onClick={toggleFillShapes}
-              title={`${fillShapes ? 'Filled shapes' : 'Outline shapes'} · click to switch (F)`}
-            >
-              <Icon name={fillShapes ? 'shapeFilled' : 'rect'} size={14} filled={fillShapes} />
-            </button>
-          )}
-        </div>
-      ))}
-      {BRUSH_TOOLS.includes(tool) && <BrushMenu />}
-      <div className="color-pair">
-        <label className="swatch-big primary" style={{ background: primary }} title={`Front colour ${primary} · left click paints with it`}>
-          <input type="color" value={primary.slice(0, 7)} onChange={(e) => setPrimary(e.target.value)} />
-        </label>
-        <label className="swatch-big secondary" style={{ background: secondary }} title={`Back colour ${secondary} · right click paints with it`}>
-          <input type="color" value={secondary.slice(0, 7)} onChange={(e) => setSecondary(e.target.value)} />
-        </label>
-        <button className="swap" onClick={swapColors} title="Swap colours (X)">
-          <Icon name="swap" size={12} />
-        </button>
-      </div>
-    </div>
-  )
-}
-
-/** A small toolbox button with a menu that opens to its right. */
-function ToolPopover({ label, title, children }: { label: React.ReactNode; title: string; children: (close: () => void) => React.ReactNode }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <div className="tool-popover">
-      <button className={`tool small ${open ? 'on' : ''}`} onClick={() => setOpen(!open)} title={title}>
-        {label}
-      </button>
-      {open && (
-        <>
-          <div className="menu-scrim" onMouseDown={() => setOpen(false)} />
-          <div className="dropdown">{children(() => setOpen(false))}</div>
-        </>
-      )}
-    </div>
-  )
-}
-
-function BrushMenu() {
-  const size = useStudio((s) => s.brushSize)
-  const shape = useStudio((s) => s.brushShape)
-  const pixelPerfect = useStudio((s) => s.pixelPerfect)
-  const { setBrushSize, setBrushShape, togglePixelPerfect } = useStudio.getState()
-  return (
-    <ToolPopover label={<span className="brush-size">{size}px</span>} title={`Brush: ${size}px ${shape} · [ and ] change the size`}>
-      {() => (
-        <>
-          <div className="dropdown-label">Brush size · [ ]</div>
-          <div className="filter-options">
-            {Array.from({ length: MAX_BRUSH }, (_, i) => i + 1).map((n) => (
-              <button key={n} className={`chip ${size === n ? 'on' : ''}`} onClick={() => setBrushSize(n)}>
-                {n}
-              </button>
-            ))}
-          </div>
-          <div className="dropdown-label">Shape</div>
-          <div className="filter-options">
-            {(['square', 'round'] as const).map((s) => (
-              <button key={s} className={`chip ${shape === s ? 'on' : ''}`} onClick={() => setBrushShape(s)}>
-                {s === 'square' ? 'Square' : 'Round'}
-              </button>
-            ))}
-          </div>
-          <div className="dropdown-sep" />
-          <label className="check" title="Removes the extra corner pixels from jagged freehand lines">
-            <input type="checkbox" checked={pixelPerfect} onChange={togglePixelPerfect} />
-            Pixel-perfect lines
-          </label>
-          <p className="muted small">{size === 1 ? 'Freehand pencil and eraser strokes skip stray corner pixels.' : 'Works with the 1px brush.'}</p>
-        </>
-      )}
-    </ToolPopover>
-  )
-}
-
-function TurnMenu() {
-  const hasSelection = useStudio((s) => s.selection !== null)
-  return (
-    <ToolPopover label={<Icon name="rotateCW" size={14} />} title="Flip or rotate the selection (or the whole layer)">
-      {(close) => (
-        <>
-          <div className="dropdown-label">{hasSelection ? 'Selection' : 'Whole layer'}</div>
-          {TURNS.map((t) => (
-            <button key={t.turn} className="dropdown-item" onClick={() => (useStudio.getState().turn(t.turn), close())}>
-              <Icon name={t.icon} /> {t.label} <span className="muted small menu-keys">{t.keys}</span>
-            </button>
-          ))}
-        </>
-      )}
-    </ToolPopover>
+          </>
+        )
+      }}
+    </Dropdown>
   )
 }
 

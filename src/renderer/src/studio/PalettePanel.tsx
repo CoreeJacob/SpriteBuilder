@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react'
+import { useRef } from 'react'
+import { Dropdown } from '@/app/Dropdown'
 import { Icon } from '@/app/Icon'
 import { attempt, useApp } from '@/app/store'
 import { lospecSlug, PALETTES, parsePaletteFile, type Palette } from './palettes'
@@ -15,7 +16,6 @@ export function PalettePanel({ used, swatches }: Props) {
   const primary = useStudio((s) => s.primary)
   useStudio((s) => s.version) // palette edits change the doc in place
   const saved = useSavedPalettes((s) => s.list)
-  const [menu, setMenu] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const s = useStudio.getState()
   const app = useApp.getState()
@@ -39,7 +39,6 @@ export function PalettePanel({ used, swatches }: Props) {
   }
 
   const saveAs = async (): Promise<void> => {
-    setMenu(false)
     const name = await app.ask({
       title: 'Save Palette',
       label: 'Saved palettes appear under “My palettes” for every sprite in this library.',
@@ -50,7 +49,6 @@ export function PalettePanel({ used, swatches }: Props) {
   }
 
   const importLospec = async (): Promise<void> => {
-    setMenu(false)
     const input = await app.ask({
       title: 'Import from Lospec',
       label: 'Paste a link from lospec.com/palette-list, or type the palette’s name (for example “sweetie-16”).',
@@ -95,43 +93,44 @@ export function PalettePanel({ used, swatches }: Props) {
               </optgroup>
             )}
           </select>
-          <div className="menu-anchor">
-            <button className={`icon-btn ${menu ? 'on' : ''}`} onClick={() => setMenu(!menu)} title="Save, import or delete palettes">
-              <Icon name="more" size={14} />
-            </button>
-            {menu && (
+          <Dropdown
+            menuClassName="right"
+            button={(open, toggle) => (
+              <button className={`icon-btn ${open ? 'on' : ''}`} onClick={toggle} title="Save, import or delete palettes">
+                <Icon name="more" size={14} />
+              </button>
+            )}
+          >
+            {(close) => (
               <>
-                <div className="menu-scrim" onMouseDown={() => setMenu(false)} />
-                <div className="dropdown right">
-                  <button className="dropdown-item" onClick={() => void saveAs()}>
-                    <Icon name="save" /> Save palette as…
-                  </button>
-                  <button className="dropdown-item" onClick={() => (setMenu(false), fileRef.current?.click())}>
-                    <Icon name="file" /> Import palette file… <span className="muted small">.hex .gpl .pal</span>
-                  </button>
-                  <button className="dropdown-item" onClick={() => void importLospec()}>
-                    <Icon name="import" /> Import from Lospec…
-                  </button>
-                  {mine && (
-                    <>
-                      <div className="dropdown-sep" />
-                      <button
-                        className="dropdown-item danger"
-                        onClick={() => {
-                          setMenu(false)
-                          if (window.confirm(`Delete the saved palette “${mine.name}”? Sprites using it keep their colours.`)) {
-                            void useSavedPalettes.getState().remove(mine.name)
-                          }
-                        }}
-                      >
-                        <Icon name="trash" /> Delete “{mine.name}”
-                      </button>
-                    </>
-                  )}
-                </div>
+                <button className="dropdown-item" onClick={() => (close(), void saveAs())}>
+                  <Icon name="save" /> Save palette as…
+                </button>
+                <button className="dropdown-item" onClick={() => (close(), fileRef.current?.click())}>
+                  <Icon name="file" /> Import palette file… <span className="muted small">.hex .gpl .pal</span>
+                </button>
+                <button className="dropdown-item" onClick={() => (close(), void importLospec())}>
+                  <Icon name="import" /> Import from Lospec…
+                </button>
+                {mine && (
+                  <>
+                    <div className="dropdown-sep" />
+                    <button
+                      className="dropdown-item danger"
+                      onClick={() => {
+                        close()
+                        if (window.confirm(`Delete the saved palette “${mine.name}”? Sprites using it keep their colours.`)) {
+                          void useSavedPalettes.getState().remove(mine.name)
+                        }
+                      }}
+                    >
+                      <Icon name="trash" /> Delete “{mine.name}”
+                    </button>
+                  </>
+                )}
               </>
             )}
-          </div>
+          </Dropdown>
         </div>
         <input
           ref={fileRef}

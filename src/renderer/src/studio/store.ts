@@ -1,5 +1,7 @@
 // Pixel Studio state. Pixel buffers are mutated in place for speed; `version` is
-// bumped after each change so the canvas knows to redraw.
+// bumped whenever the sprite's pixels or layers change, so the canvas, thumbnails and
+// autosave know to catch up. Settings that only change how it's shown or drawn (brush,
+// mirror, onion skin, the selection outline) don't bump it: the canvas watches those itself.
 
 import { create } from 'zustand'
 import { History } from './history'
@@ -415,17 +417,17 @@ export const useStudio = create<StudioState>((set, get) => {
       set({ dirty: true, version: get().version + 1 })
     },
     toggleFillShapes: () => set({ fillShapes: !get().fillShapes }),
-    setBrushSize: (size) => set({ brushSize: Math.max(1, Math.min(MAX_BRUSH, Math.round(size))), version: get().version + 1 }),
-    setBrushShape: (brushShape) => set({ brushShape, version: get().version + 1 }),
+    setBrushSize: (size) => set({ brushSize: Math.max(1, Math.min(MAX_BRUSH, Math.round(size))) }),
+    setBrushShape: (brushShape) => set({ brushShape }),
     togglePixelPerfect: () => set({ pixelPerfect: !get().pixelPerfect }),
-    toggleMirrorX: () => set({ mirrorX: !get().mirrorX, version: get().version + 1 }),
-    toggleMirrorY: () => set({ mirrorY: !get().mirrorY, version: get().version + 1 }),
+    toggleMirrorX: () => set({ mirrorX: !get().mirrorX }),
+    toggleMirrorY: () => set({ mirrorY: !get().mirrorY }),
 
     // ---------- selection ----------
 
     setSelection: (selection) => {
       get().commitFloating()
-      set({ selection, version: get().version + 1 })
+      set({ selection })
     },
 
     selectAll: () => {
@@ -534,7 +536,7 @@ export const useStudio = create<StudioState>((set, get) => {
       if (whole && t.w === doc.width && t.h === doc.height) {
         // The layer still fits the canvas exactly, so put it straight back down.
         get().commitFloating()
-        set({ selection: null, version: get().version + 1 })
+        set({ selection: null })
       } else {
         // Leave it lifted, ready to drag into place.
         set({ tool: 'select' })
@@ -658,7 +660,7 @@ export const useStudio = create<StudioState>((set, get) => {
     moveFrame: (from, to) => (set({ rangeStart: null }), changeDoc((doc) => ({ frame: moveFrame(doc, from, to) }))),
     setFrameDuration: (index, ms) => changeDoc((doc) => setDuration(doc, index, ms)),
     setFps: (fps) => changeDoc((doc) => setFps(doc, fps)),
-    toggleOnionSkin: () => set({ onionSkin: !get().onionSkin, version: get().version + 1 }),
+    toggleOnionSkin: () => set({ onionSkin: !get().onionSkin }),
     togglePlaying: () => set({ playing: !get().playing }),
 
     setZoom: (zoom) => set({ zoom: Math.max(ZOOM_LEVELS[0], Math.min(ZOOM_LEVELS.at(-1)!, zoom)) }),

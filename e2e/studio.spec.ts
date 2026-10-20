@@ -35,17 +35,17 @@ test('drawing tools, mirror, layers, selection and clipboard', async ({ app }) =
   await app.js(`${mirror}.click()`)
 
   // Layers: add, draw, hide, merge, undo
-  const layerBtn = (label: string) => app.js(`${byTip('.layer-actions button', label)}.click()`).then(() => app.wait(100))
+  const layerBtn = (label: string) => app.js(`${byTip('.layer-actions button', label)}.click()`).then(() => app.settle())
   const layerCount = () => app.js<number>(`document.querySelectorAll('.layer-row').length`)
   await layerBtn('New layer above this one')
   await check('two layers after add', (await layerCount()) === 2)
   await app.click(10, 2)
   await check('drew on new layer', (await app.px(10, 2)) !== 'empty')
   await app.js(`document.querySelector('.layer-row.active .eye').click()`)
-  await app.wait(100)
+  await app.settle()
   await check('hiding the layer hides its pixels', (await app.px(10, 2)) === 'empty')
   await app.js(`document.querySelector('.layer-row.active .eye').click()`)
-  await app.wait(100)
+  await app.settle()
   await layerBtn('Merge into the layer below')
   await check('merge down leaves one layer', (await layerCount()) === 1)
   await check('merged pixel still visible', (await app.px(10, 2)) !== 'empty')
@@ -68,7 +68,7 @@ test('drawing tools, mirror, layers, selection and clipboard', async ({ app }) =
   await app.dragCells([2, 2], [6, 5])
   await app.js(`document.dispatchEvent(new ClipboardEvent('copy', { clipboardData: new DataTransfer(), bubbles: true }))`)
   await app.js(`document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: new DataTransfer(), bubbles: true }))`)
-  await app.wait(150)
+  await app.settle()
   await app.dragCells([3, 3], [3, 10])
   await app.key('Enter', 'Enter')
   await app.key('Escape', 'Escape')
@@ -86,7 +86,7 @@ test('drawing tools, mirror, layers, selection and clipboard', async ({ app }) =
 
   // Select All (what ⌘A sends from the menu), then delete
   await app.js(`window.dispatchEvent(new Event('studio:selectAll'))`)
-  await app.wait(100)
+  await app.settle()
   await app.key('Backspace', 'Backspace')
   await check('select all + delete clears the layer', (await app.px(2, 2)) === 'empty')
 })
