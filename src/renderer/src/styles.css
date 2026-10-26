@@ -1802,7 +1802,7 @@ textarea.input {
 }
 .adjust-row {
   display: grid;
-  grid-template-columns: 74px 1fr 34px;
+  grid-template-columns: 74px 1fr 54px;
   align-items: center;
   gap: 8px;
   font-size: 12px;
@@ -1811,11 +1811,13 @@ textarea.input {
 .adjust-row .slider {
   width: 100%;
 }
-.adjust-value {
-  text-align: right;
+.adjust-input {
+  width: 54px;
+  height: 24px;
+  padding: 0 4px;
   font-family: var(--mono);
   font-size: 11px;
-  cursor: default;
+  text-align: right;
 }
 .picked {
   display: inline-flex;

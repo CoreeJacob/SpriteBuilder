@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Icon, type IconName } from '@/app/Icon'
+import { NumberInput } from '@/app/NumberInput'
 import { useApp } from '@/app/store'
 import { ImageChooser } from '@/library/ImageChooser'
 import { countColors, parseHex, toHex } from '@/studio/raster'
@@ -369,14 +370,31 @@ function TransformSection() {
 function AdjustSection() {
   const a = useEditor((s) => s.adjustments)
   const s = useEditor.getState()
+  // Drag the slider, or type an exact number (it previews as you type).
   const slider = (key: 'brightness' | 'contrast' | 'hue' | 'saturation', label: string, min: number, max: number) => (
-    <label className="adjust-row">
-      <span>{label}</span>
-      <input className="slider" type="range" min={min} max={max} value={a[key]} onChange={(e) => s.setAdjustments({ [key]: Number(e.target.value) })} />
-      <span className="adjust-value" onDoubleClick={() => s.setAdjustments({ [key]: 0 })} title="Double-click to reset">
-        {a[key]}
+    <div className="adjust-row">
+      <span onDoubleClick={() => s.setAdjustments({ [key]: 0 })} title="Double-click to reset">
+        {label}
       </span>
-    </label>
+      <input
+        className="slider"
+        type="range"
+        min={min}
+        max={max}
+        value={a[key]}
+        onChange={(e) => s.setAdjustments({ [key]: Number(e.target.value) })}
+        aria-label={label}
+      />
+      <NumberInput
+        live
+        className="input adjust-input"
+        value={a[key]}
+        min={min}
+        max={max}
+        onCommit={(v) => s.setAdjustments({ [key]: v })}
+        title={`Type an exact ${label.toLowerCase()} (${min} to ${max}) · ↑↓ by 1, ⇧↑↓ by 10 · Esc undoes`}
+      />
+    </div>
   )
   return (
     <Section id="adjust" title="Adjust" icon="editor">
@@ -453,11 +471,11 @@ function ColourSection() {
         </span>
       </div>
 
-      <label className="adjust-row" title="How different a colour can be and still count as a match">
+      <div className="adjust-row" title="How different a colour can be and still count as a match">
         <span>Tolerance</span>
-        <input className="slider" type="range" min={0} max={128} value={tolerance} onChange={(e) => s.setTolerance(Number(e.target.value))} />
-        <span className="adjust-value">{tolerance}</span>
-      </label>
+        <input className="slider" type="range" min={0} max={128} value={tolerance} onChange={(e) => s.setTolerance(Number(e.target.value))} aria-label="Tolerance" />
+        <NumberInput live className="input adjust-input" value={tolerance} min={0} max={128} onCommit={s.setTolerance} title="Type an exact tolerance (0 to 128)" />
+      </div>
 
       <div className="button-row">
         <span className="small muted">Replace with</span>

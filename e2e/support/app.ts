@@ -207,7 +207,8 @@ export class App {
   }
 
   async key(key: string, code: string, modifiers = 0): Promise<void> {
-    const windowsVirtualKeyCode = key.length === 1 ? key.toUpperCase().charCodeAt(0) : key === 'Escape' ? 27 : key === 'Enter' ? 13 : undefined
+    const named: Record<string, number> = { Escape: 27, Enter: 13, Backspace: 8, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40 }
+    const windowsVirtualKeyCode = key.length === 1 ? key.toUpperCase().charCodeAt(0) : named[key]
     await this.call('Input.dispatchKeyEvent', { type: 'keyDown', key, code, modifiers, windowsVirtualKeyCode })
     await this.call('Input.dispatchKeyEvent', { type: 'keyUp', key, code, modifiers })
     await this.settle()

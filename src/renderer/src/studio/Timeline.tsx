@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ContextMenu, type MenuEntry, type MenuRequest } from '@/app/ContextMenu'
 import { Icon } from '@/app/Icon'
+import { NumberInput } from '@/app/NumberInput'
 import { useApp } from '@/app/store'
 import { drawPixels } from '@/lib/canvas'
 import { sharedFps } from './frames'
@@ -257,34 +258,4 @@ function FrameThumb({ doc, index }: { doc: SpriteDoc; index: number }) {
     drawPixels(canvas, compositeAt(doc, index, version), doc.width, doc.height)
   }, [doc, index, version])
   return <canvas ref={ref} className="frame-thumb checker" />
-}
-
-/** A number box that applies its value on Enter or when it loses focus. */
-function NumberInput(props: {
-  value: number | ''
-  min: number
-  max: number
-  placeholder?: string
-  onCommit: (value: number) => void
-}) {
-  const [draft, setDraft] = useState(String(props.value))
-  useEffect(() => setDraft(String(props.value)), [props.value])
-  const commit = (): void => {
-    const n = Number(draft)
-    if (draft.trim() !== '' && Number.isFinite(n) && n !== props.value) props.onCommit(Math.max(props.min, Math.min(props.max, n)))
-    else setDraft(String(props.value))
-  }
-  return (
-    <input
-      className="input number"
-      type="number"
-      min={props.min}
-      max={props.max}
-      value={draft}
-      placeholder={props.placeholder}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-    />
-  )
 }
