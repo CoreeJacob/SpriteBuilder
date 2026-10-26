@@ -16,6 +16,7 @@ import {
   linePoints,
   mirrorPoints,
   parseHex,
+  previewZoom,
   rectPoints,
   setPixel,
   shapePixels,
@@ -251,5 +252,14 @@ describe('fitToCanvas', () => {
     expect(fitToCanvas(16, 8, 100, 100)).toEqual([96, 48]) // 6×, still square pixels
     expect(fitToCanvas(600, 400, 16, 16)).toEqual([16, 11])
     expect(fitToCanvas(32, 32, 32, 32)).toEqual([32, 32])
+  })
+})
+
+describe('previewZoom', () => {
+  it('enlarges by whole numbers to fill the box, and shrinks by fractions only when it must', () => {
+    expect(previewZoom(16, 16, 236, 202)).toBe(12)
+    expect(previewZoom(128, 128, 580, 600)).toBe(4)
+    expect(previewZoom(512, 512, 580, 600)).toBe(1)
+    expect(previewZoom(512, 512, 228, 202)).toBeCloseTo(202 / 512)
   })
 })

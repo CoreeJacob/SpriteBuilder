@@ -40,3 +40,42 @@ test('a bigger preview shows the whole sprite, at fit or actual size, and stays 
   await toggleBig(app)
   await check('…and the shrink button puts it back', (await sizes(app)).panel === small.panel, await sizes(app))
 })
+
+test('the Library preview grows too, separately from the Studio’s', async ({ app }) => {
+  const shown = () =>
+    app.js<{ image: number; panel: number; box: number }>(`({ image: Math.round(document.querySelector('.detail .preview img, .detail .preview canvas').getBoundingClientRect().width), panel: Math.round(document.querySelector('.detail').getBoundingClientRect().width), box: Math.round(document.querySelector('.detail .preview').getBoundingClientRect().width) })`)
+  const expand = () => app.js(`${byTip('.preview-controls .icon-btn', '')}.click()`).then(() => app.settle())
+  const pickCard = async (name: string) => {
+    await app.js(`[...document.querySelectorAll('.card')].find(c => c.querySelector('.card-name')?.textContent === '${name}').click()`)
+    await app.untilJs(`!!document.querySelector('.detail .preview img')?.complete`)
+    await app.settle()
+  }
+
+  await app.showAll('walk-sheet.png')
+  await pickCard('walk-sheet.png') // 32×8
+  const small = await shown()
+  await check('Fit enlarges a small sprite by a whole number to fill the preview', small.image % 32 === 0 && small.image > 32 * 4 && small.image <= small.box, small)
+  await pickCard('big-photo.png') // 600×400, wider than the usual preview
+  const photo = await shown()
+  await check('a big image shrinks to fit the preview', photo.image <= photo.box && photo.image < 600, photo)
+  await pickCard('walk-sheet.png')
+
+  await expand()
+  const big = await shown()
+  await check('the expand button widens the detail panel', big.panel > small.panel + 200, { small, big })
+  await check('…and the sprite grows with it, still by a whole number', big.image > small.image && big.image % 32 === 0 && big.image <= big.box, big)
+
+  await app.js(`[...document.querySelectorAll('.preview-controls .chip')].find(c => c.textContent === '1×').click()`)
+  await app.settle()
+  await check('1× still shows it at actual size', (await shown()).image === 32, await shown())
+
+  await app.newSprite(16)
+  await check('the Studio’s preview is set separately', !(await app.js(`document.querySelector('.studio-body').classList.contains('big-preview')`)))
+
+  await app.relaunch()
+  await app.showAll('walk-sheet.png')
+  await pickCard('walk-sheet.png')
+  await check('the big Library preview is remembered next time', (await shown()).panel === big.panel, await shown())
+  await expand()
+  await check('…and the shrink button puts it back', (await shown()).panel === small.panel, await shown())
+})

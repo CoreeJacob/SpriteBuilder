@@ -8,6 +8,7 @@ import { formatBytes, formatDateTime, formatDimensions } from '@/lib/format'
 import { openInEditor } from '@/editor/io'
 import { frameCanvas, openInStudio } from '@/studio/io'
 import { parseDoc } from '@/studio/model'
+import { previewZoom } from '@/studio/raster'
 
 const ZOOMS = ['fit', 1, 2, 4, 8] as const
 type Zoom = (typeof ZOOMS)[number]
@@ -44,11 +45,22 @@ export function DetailPanel({ allTags }: { allTags: string[] }) {
 function SinglePanel({ item, allTags, folders }: { item: LibraryItem; allTags: string[]; folders: string[] }) {
   const [zoom, setZoom] = useState<Zoom>('fit')
   const [paused, setPaused] = useState(false)
+  const big = useApp((s) => s.bigLibraryPreview)
+  const boxRef = useRef<HTMLDivElement>(null)
+  const [box, setBox] = useState({ w: 250, h: 216 })
   const [notes, setNotes] = useState(item.notes)
   const [name, setName] = useState(stripExt(item.name))
   const imgRef = useRef<HTMLImageElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const animated = (item.frames ?? 1) > 1
+
+  useEffect(() => {
+    const el = boxRef.current
+    if (!el) return
+    const observer = new ResizeObserver(([entry]) => setBox({ w: entry.contentRect.width, h: entry.contentRect.height }))
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
 
   useEffect(() => setNotes(item.notes), [item.notes])
   useEffect(() => setName(stripExt(item.name)), [item.name])
@@ -73,17 +85,14 @@ function SinglePanel({ item, allTags, folders }: { item: LibraryItem; allTags: s
     }
   }
 
-  // "Fit" scales small sprites up by a whole number so the pixels stay square.
-  const fitScale = item.width && item.height ? Math.floor(Math.min(250 / item.width, 216 / item.height)) : 0
-  const scale = zoom === 'fit' ? fitScale : zoom
-  const previewStyle =
-    scale >= 1 && item.width && item.height
-      ? { width: item.width * scale, height: item.height * scale, maxWidth: 'none' }
-      : { maxWidth: '100%', maxHeight: '100%' }
+  // "Fit" scales small sprites up by a whole number so the pixels stay square, and big ones down.
+  const sized = !!(item.width && item.height)
+  const scale = zoom === 'fit' ? (sized ? previewZoom(item.width!, item.height!, box.w - 4, box.h - 4) : 1) : zoom
+  const previewStyle = sized ? { width: item.width! * scale, height: item.height! * scale } : { maxWidth: '100%', maxHeight: '100%' }
 
   return (
     <aside className="detail">
-      <div className="preview checker">
+      <div className="preview checker" ref={boxRef}>
         {animated && item.hasProject ? (
           // A Pixel Studio sprite's PNG holds only its first frame; play the frames from its project.
           <SpriteAnimation item={item} paused={paused} style={previewStyle} />
@@ -94,7 +103,8 @@ function SinglePanel({ item, allTags, folders }: { item: LibraryItem; allTags: s
               src={itemUrl(item)}
               alt=""
               crossOrigin="anonymous"
-              className={zoom === 'fit' && (item.width ?? 999) > 256 ? '' : 'pixelated'}
+              // Shrunk photos look better smoothed; enlarged pixel art keeps hard edges.
+              className={scale < 1 ? '' : 'pixelated'}
               style={{ ...previewStyle, visibility: paused ? 'hidden' : 'visible', position: paused ? 'absolute' : undefined }}
             />
             {paused && <canvas ref={canvasRef} className="pixelated" style={previewStyle} />}
@@ -112,6 +122,14 @@ function SinglePanel({ item, allTags, folders }: { item: LibraryItem; allTags: s
             {paused ? '▶ Play' : '❚❚ Pause'}
           </button>
         )}
+        <span className="spacer" />
+        <button
+          className={`icon-btn ${big ? 'on' : ''}`}
+          onClick={() => useApp.getState().setBigLibraryPreview(!big)}
+          title={big ? 'Smaller preview' : 'Bigger preview, to see the whole image'}
+        >
+          <Icon name={big ? 'collapse' : 'expand'} size={14} />
+        </button>
       </div>
 
       <div className="detail-body">

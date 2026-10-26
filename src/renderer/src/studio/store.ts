@@ -232,15 +232,6 @@ export function fitZoom(width: number, height: number): number {
   return [...ZOOM_LEVELS].reverse().find((z) => z <= target) ?? 1
 }
 
-/**
- * How much to enlarge a w×h image to fill a box: a whole number when it can grow (so pixels stay
- * square), or a fraction when it has to shrink. Never 0.
- */
-export function previewZoom(w: number, h: number, boxW: number, boxH: number): number {
-  const fit = Math.min(boxW / w, boxH / h)
-  return fit >= 1 ? Math.floor(fit) : Math.max(fit, 0.01)
-}
-
 /** Undo keeps up to this many steps, and forgets the oldest ones once they hold this much. */
 const UNDO_STEPS = 100
 const UNDO_BYTES = 256 * 1024 * 1024

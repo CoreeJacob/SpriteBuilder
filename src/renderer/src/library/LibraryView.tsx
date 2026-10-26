@@ -36,6 +36,7 @@ async function readBrowserFiles(files: File[]): Promise<ImportedFile[]> {
 
 export function LibraryView() {
   const library = useApp((s) => s.library)
+  const bigLibraryPreview = useApp((s) => s.bigLibraryPreview)
   const scope = useApp((s) => s.scope)
   const includeSubfolders = useApp((s) => s.includeSubfolders)
   const filters = useApp((s) => s.filters)
@@ -130,7 +131,7 @@ export function LibraryView() {
   const hiddenCount = library.items.filter((i) => inScope(i, scope, includeSubfolders)).length - items.length
 
   return (
-    <div className="library">
+    <div className={`library ${bigLibraryPreview ? 'big-preview' : ''}`}>
       <FolderSidebar />
       <section className="lib-main">
         <header className="lib-header">

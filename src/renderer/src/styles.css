@@ -792,8 +792,7 @@ textarea.input {
 }
 .preview {
   position: relative;
-  display: grid;
-  place-items: center;
+  display: flex;
   flex: none;
   height: 240px;
   margin: 12px 12px 0;
@@ -802,7 +801,16 @@ textarea.input {
 }
 .preview img,
 .preview canvas {
+  flex: none;
+  margin: auto; /* centred, and still scrollable from the top-left when zoomed past the box */
   object-fit: contain;
+}
+/* The big preview: a wider detail panel with a much taller preview. */
+.library.big-preview {
+  grid-template-columns: clamp(190px, 16vw, 230px) minmax(0, 1fr) min(46vw, 640px);
+}
+.library.big-preview .preview {
+  height: min(62vh, 620px);
 }
 .preview-controls {
   display: flex;

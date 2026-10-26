@@ -44,6 +44,8 @@ interface AppState {
   /** Pixel Studio's preview: shown big (a wider side panel), and at fit or actual size. */
   bigPreview: boolean
   previewSize: PreviewSize
+  /** The Library's detail panel shown wide, with a big preview. */
+  bigLibraryPreview: boolean
   selection: string[]
   /** Anchor for shift-click range selection. */
   selectionAnchor: string | null
@@ -68,6 +70,7 @@ interface AppState {
   setThumbSize(size: number): void
   setBigPreview(big: boolean): void
   setPreviewSize(size: PreviewSize): void
+  setBigLibraryPreview(big: boolean): void
   select(paths: string[], anchor?: string | null): void
 
   notify(message: string, kind?: Toast['kind']): void
@@ -96,6 +99,7 @@ interface Prefs {
   thumbSize: number
   bigPreview: boolean
   previewSize: PreviewSize
+  bigLibraryPreview: boolean
   sort: SortOrder
   includeSubfolders: boolean
 }
@@ -115,6 +119,7 @@ function savePrefs(state: AppState): void {
     thumbSize: state.thumbSize,
     bigPreview: state.bigPreview,
     previewSize: state.previewSize,
+    bigLibraryPreview: state.bigLibraryPreview,
     sort: state.sort,
     includeSubfolders: state.includeSubfolders
   }
@@ -146,6 +151,7 @@ export const useApp = create<AppState>((set, get) => ({
   thumbSize: prefs.thumbSize ?? 128,
   bigPreview: prefs.bigPreview ?? false,
   previewSize: prefs.previewSize ?? 'fit',
+  bigLibraryPreview: prefs.bigLibraryPreview ?? false,
   selection: [],
   selectionAnchor: null,
 
@@ -198,6 +204,10 @@ export const useApp = create<AppState>((set, get) => ({
   },
   setPreviewSize: (previewSize) => {
     set({ previewSize })
+    savePrefs(get())
+  },
+  setBigLibraryPreview: (bigLibraryPreview) => {
+    set({ bigLibraryPreview })
     savePrefs(get())
   },
   select: (selection, anchor) =>

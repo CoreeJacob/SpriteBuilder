@@ -128,6 +128,15 @@ export function fitToCanvas(w: number, h: number, maxW: number, maxH: number): [
   return times >= 1 ? [w * times, h * times] : fitWithin(w, h, maxW, maxH)
 }
 
+/**
+ * How much to enlarge a w×h image to fill a box: a whole number when it can grow (so pixels stay
+ * square), or a fraction when it has to shrink. Never 0.
+ */
+export function previewZoom(w: number, h: number, boxW: number, boxH: number): number {
+  const fit = Math.min(boxW / w, boxH / h)
+  return fit >= 1 ? Math.floor(fit) : Math.max(fit, 0.01)
+}
+
 /** Pixel-perfect resize: every output pixel copies the nearest input pixel. */
 export function resizePixels(src: Uint8ClampedArray, sw: number, sh: number, dw: number, dh: number): Uint8ClampedArray<ArrayBuffer> {
   const out = new Uint8ClampedArray(dw * dh * 4)
