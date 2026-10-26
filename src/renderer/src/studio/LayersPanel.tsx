@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ContextMenu, type MenuEntry, type MenuRequest } from '@/app/ContextMenu'
 import { Icon } from '@/app/Icon'
+import { NumberInput } from '@/app/NumberInput'
 import { drawPixels } from '@/lib/canvas'
 import { InsertImageDialog } from './InsertImageDialog'
 import type { SpriteDoc } from './model'
@@ -39,6 +40,14 @@ export function LayersPanel() {
   const rename = (id: string, name: string): void => {
     setEditing(null)
     if (name.trim()) s.renameLayer(id, name)
+  }
+  /** Opacity changes (a slider drag, or typing in the box) become one undo step each. */
+  const startOpacity = (): void => {
+    finishOpacity.current = s.beginLayerChange()
+  }
+  const endOpacity = (): void => {
+    finishOpacity.current?.()
+    finishOpacity.current = null
   }
   const deleteActive = (): void => {
     if (window.confirm(`Delete "${s.activeLayer()?.name}"? (You can undo this.)`)) s.deleteLayer()
@@ -180,7 +189,7 @@ export function LayersPanel() {
       </div>
 
       {active && (
-        <label className="opacity-row">
+        <div className="opacity-row">
           <span className="muted small">Opacity</span>
           <input
             className="slider"
@@ -188,15 +197,25 @@ export function LayersPanel() {
             min={0}
             max={100}
             value={Math.round(active.opacity * 100)}
-            onPointerDown={() => (finishOpacity.current = s.beginLayerChange())}
-            onPointerUp={() => {
-              finishOpacity.current?.()
-              finishOpacity.current = null
-            }}
+            onPointerDown={startOpacity}
+            onPointerUp={endOpacity}
             onChange={(e) => s.setLayerOpacity(active.id, Number(e.target.value) / 100)}
+            aria-label="Opacity"
           />
-          <span className="small opacity-value">{Math.round(active.opacity * 100)}%</span>
-        </label>
+          {/* Typed changes are one undo step, like a drag of the slider. */}
+          <NumberInput
+            live
+            className="input adjust-input"
+            value={Math.round(active.opacity * 100)}
+            min={0}
+            max={100}
+            onStart={startOpacity}
+            onEnd={endOpacity}
+            onCommit={(v) => s.setLayerOpacity(active.id, v / 100)}
+            title="Type an exact opacity (0 to 100%) · ↑↓ by 1, ⇧↑↓ by 10 · Esc undoes"
+          />
+          <span className="muted small">%</span>
+        </div>
       )}
       {inserting && <InsertImageDialog onClose={() => setInserting(false)} />}
       {menu && <ContextMenu menu={menu} onClose={closeMenu} />}

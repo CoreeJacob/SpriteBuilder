@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from 'react'
 /**
  * A whole-number box. It applies its value on Enter or when it loses focus, or with `live` as soon
  * as what's typed is a number (so previews follow along). Values are kept within min–max.
- * ↑/↓ step by 1 and ⇧↑/⇧↓ by 10; Esc puts back the value it had before.
+ * ↑/↓ step by 1 and ⇧↑/⇧↓ by 10; Esc puts back the value it had before. `onStart` and `onEnd`
+ * mark the start and end of an edit (e.g. to make all the typing one undo step).
  */
 export function NumberInput({
   value,
@@ -13,7 +14,9 @@ export function NumberInput({
   live = false,
   placeholder,
   className = 'input number',
-  title
+  title,
+  onStart,
+  onEnd
 }: {
   value: number | ''
   min: number
@@ -23,6 +26,8 @@ export function NumberInput({
   placeholder?: string
   className?: string
   title?: string
+  onStart?: () => void
+  onEnd?: () => void
 }) {
   const [draft, setDraft] = useState(String(value))
   const before = useRef<number | ''>(value)
@@ -46,7 +51,10 @@ export function NumberInput({
       value={draft}
       placeholder={placeholder}
       title={title}
-      onFocus={() => (before.current = value)}
+      onFocus={() => {
+        before.current = value
+        onStart?.()
+      }}
       onChange={(e) => {
         setDraft(e.target.value)
         if (live) apply(parse(e.target.value))
@@ -56,6 +64,7 @@ export function NumberInput({
         apply(n)
         // Tidy what's shown: "013" becomes 13, and anything that isn't a number goes back.
         setDraft(String(n ?? value))
+        onEnd?.()
       }}
       onKeyDown={(e) => {
         if (e.key === 'Enter') e.currentTarget.blur()

@@ -59,3 +59,29 @@ test('right-clicking layers: duplicate, add, move, merge, hide, rename and delet
   await check('Insert Image Above… opens the image picker', await app.untilJs(`!!document.querySelector('.insert-image-dialog')`))
   await app.key('Escape', 'Escape')
 })
+
+test('typing an exact layer opacity, as one undo step', async ({ app }) => {
+  const box = `document.querySelector('.opacity-row .adjust-input')`
+  const opacity = () => app.js<{ box: string; slider: string; row: string }>(`({ box: ${box}.value, slider: document.querySelector('.opacity-row .slider').value, row: document.querySelector('.layer-row.active')?.textContent ?? '' })`)
+  await app.newSprite(8)
+  await app.tool('b')
+  await app.click(1, 1)
+
+  await app.js(`${box}.focus()`)
+  await app.setInput(box, '3') // typed one key at a time…
+  await app.setInput(box, '37')
+  await app.js(`${box}.blur()`)
+  await app.settle()
+  const typed = await opacity()
+  await check('typing 37 sets the layer to exactly 37%, and the slider follows', typed.box === '37' && typed.slider === '37' && typed.row.includes('37%'), typed)
+  await app.undo()
+  await check('…and one undo takes the whole edit back to 100%', (await opacity()).box === '100', await opacity())
+
+  await app.js(`${box}.focus()`)
+  await app.setInput(box, '10')
+  await app.key('Escape', 'Escape')
+  await check('Esc puts back the opacity from before typing', (await opacity()).box === '100', await opacity())
+
+  await app.setInput(`document.querySelector('.opacity-row .slider')`, '60')
+  await check('the slider still works, and the box follows it', (await opacity()).box === '60', await opacity())
+})

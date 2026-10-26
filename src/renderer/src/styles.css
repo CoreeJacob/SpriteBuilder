@@ -1397,10 +1397,6 @@ textarea.input {
 .opacity-row .slider {
   flex: 1;
 }
-.opacity-value {
-  width: 34px;
-  text-align: right;
-}
 .pixel-canvas.tool-move {
   cursor: move;
 }
