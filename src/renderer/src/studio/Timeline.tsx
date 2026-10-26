@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { ContextMenu, type MenuEntry, type MenuRequest } from '@/app/ContextMenu'
 import { Icon } from '@/app/Icon'
 import { useApp } from '@/app/store'
 import { drawPixels } from '@/lib/canvas'
@@ -26,6 +27,8 @@ export function Timeline() {
   useStudio((s) => s.version) // frames change in place; re-render on every edit
   const [drop, setDrop] = useState<number | null>(null)
   const [renaming, setRenaming] = useState<string | null>(null)
+  const [menu, setMenu] = useState<MenuRequest | null>(null)
+  const closeMenu = useCallback(() => setMenu(null), [])
   const s = useStudio.getState()
   const app = useApp.getState()
 
@@ -44,6 +47,44 @@ export function Timeline() {
   }
   const fps = sharedFps(doc)
   const current = doc.frames[frame]
+
+  const changeDuration = async (index: number): Promise<void> => {
+    const answer = await app.ask({
+      title: `Frame ${index + 1} Duration`,
+      label: 'How long this frame shows, in milliseconds (100 ms is 10 frames a second).',
+      value: String(doc.frames[index].duration),
+      confirmLabel: 'Set'
+    })
+    const ms = Number(answer)
+    if (answer !== null && Number.isFinite(ms) && ms > 0) s.setFrameDuration(index, ms)
+  }
+
+  /** Right-click: acts on the frames shift-selected if this is one of them, otherwise on this frame. */
+  const frameMenu = (i: number): MenuEntry[] => {
+    const inRange = ranged && i >= rangeFrom && i <= rangeTo
+    const [from, to] = inRange ? [rangeFrom, rangeTo] : [i, i]
+    const several = to > from
+    const label = several ? `Frames ${from + 1}–${to + 1}` : 'Frame'
+    return [
+      ...(several ? ([{ label: `Name ${label}…`, icon: 'tag', onSelect: () => void nameFrames() }, 'separator'] satisfies MenuEntry[]) : []),
+      { label: 'Duplicate Frame', icon: 'copy', disabled: several, onSelect: () => s.duplicateFrame() },
+      { label: 'New Empty Frame Before', icon: 'plus', onSelect: () => s.addFrameAfter(i - 1) },
+      { label: 'New Empty Frame After', icon: 'plus', onSelect: () => s.addFrameAfter(i) },
+      'separator',
+      { label: 'Move Left', icon: 'prevFrame', disabled: several || i === 0, onSelect: () => s.moveFrame(i, i - 1) },
+      { label: 'Move Right', icon: 'nextFrame', disabled: several || i === count - 1, onSelect: () => s.moveFrame(i, i + 1) },
+      { label: 'Frame Duration…', icon: 'play', hint: `${doc.frames[i].duration} ms`, disabled: several, onSelect: () => void changeDuration(i) },
+      'separator',
+      {
+        label: `Delete ${several ? label : 'Frame'}`,
+        icon: 'trash',
+        danger: true,
+        // There's always at least one frame left.
+        disabled: to - from + 1 >= count,
+        onSelect: () => s.deleteFrames(from, to)
+      }
+    ]
+  }
 
   return (
     <div className="timeline">
@@ -162,6 +203,12 @@ export function Timeline() {
               drop === count && i === count - 1 ? 'drop-after' : ''
             ].join(' ')}
             onClick={(e) => s.setFrame(i, e.shiftKey)}
+            onContextMenu={(e) => {
+              e.preventDefault()
+              // Right-clicking outside the selected frames selects this one, as in the Library.
+              if (!(ranged && i >= rangeFrom && i <= rangeTo)) s.setFrame(i)
+              setMenu({ x: e.clientX, y: e.clientY, entries: frameMenu(i) })
+            }}
             draggable
             onDragStart={(e) => {
               e.dataTransfer.setData(FRAME_DRAG_TYPE, String(i))
@@ -185,7 +232,7 @@ export function Timeline() {
               setDrop(null)
             }}
             onDragEnd={() => setDrop(null)}
-            title={`Frame ${i + 1} · ${f.duration} ms · drag to reorder, shift-click to select several`}
+            title={`Frame ${i + 1} · ${f.duration} ms · drag to reorder, shift-click to select several, right-click for more`}
           >
             <FrameThumb doc={doc} index={i} />
             <span className="frame-number">{i + 1}</span>
@@ -196,6 +243,7 @@ export function Timeline() {
         </button>
       </div>
       </div>
+      {menu && <ContextMenu menu={menu} onClose={closeMenu} />}
     </div>
   )
 }

@@ -206,8 +206,12 @@ interface StudioState extends DocLocation {
   selectTag(id: string): void
   stepFrame(direction: 1 | -1): void
   addFrame(): void
+  /** Adds an empty frame right after `index` (−1 puts it first). */
+  addFrameAfter(index: number): void
   duplicateFrame(): void
   deleteFrame(): void
+  /** Deletes frames `from`–`to` in one undo step (always keeping at least one frame). */
+  deleteFrames(from: number, to: number): void
   moveFrame(from: number, to: number): void
   setFrameDuration(index: number, ms: number): void
   setFps(fps: number): void
@@ -727,6 +731,16 @@ export const useStudio = create<StudioState>((set, get) => {
     addFrame: () => (set({ rangeStart: null }), changeDoc((doc, at) => ({ frame: addFrame(doc, at.frame) }))),
     duplicateFrame: () => (set({ rangeStart: null }), changeDoc((doc, at) => ({ frame: duplicateFrame(doc, at.frame) }))),
     deleteFrame: () => (set({ rangeStart: null }), changeDoc((doc, at) => ({ frame: deleteFrame(doc, at.frame) }))),
+    addFrameAfter: (index) => (set({ rangeStart: null }), changeDoc((doc) => ({ frame: addFrame(doc, index) }))),
+    deleteFrames: (from, to) => {
+      set({ rangeStart: null })
+      changeDoc((doc) => {
+        // From the end backwards, so the earlier indexes stay put.
+        let next = from
+        for (let i = Math.min(to, doc.frames.length - 1); i >= from; i--) next = deleteFrame(doc, i)
+        return { frame: Math.min(next, doc.frames.length - 1) }
+      })
+    },
     moveFrame: (from, to) => (set({ rangeStart: null }), changeDoc((doc) => ({ frame: moveFrame(doc, from, to) }))),
     setFrameDuration: (index, ms) => changeDoc((doc) => setDuration(doc, index, ms)),
     setFps: (fps) => changeDoc((doc) => setFps(doc, fps)),

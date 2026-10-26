@@ -273,3 +273,33 @@ describe('previewZoom', () => {
     expect(previewZoom(512, 512, 228, 202)).toBeCloseTo(202 / 512)
   })
 })
+
+describe('frame menu actions', () => {
+  const state = () => useStudio.getState()
+  const ids = () => state().doc!.frames.map((f) => f.id)
+
+  it('adds an empty frame before the first one, and selects it', () => {
+    state().newDoc(2, 2)
+    const first = ids()[0]
+    state().addFrameAfter(-1)
+    expect(ids()).toHaveLength(2)
+    expect(ids()[1]).toBe(first)
+    expect(state().frame).toBe(0)
+  })
+
+  it('deletes a run of frames in one undo step, moving tags and never deleting the last frame', () => {
+    state().newDoc(2, 2)
+    for (let i = 0; i < 4; i++) state().addFrame() // 5 frames
+    state().setFrame(3)
+    state().setFrame(4, true)
+    state().addTag('end') // frames 4–5
+    const before = ids()
+    state().deleteFrames(1, 2)
+    expect(ids()).toEqual([before[0], before[3], before[4]])
+    expect(state().doc!.tags[0]).toMatchObject({ from: 1, to: 2 })
+    state().undo()
+    expect(ids()).toEqual(before)
+    state().deleteFrames(0, 4)
+    expect(ids()).toHaveLength(1) // there's always one frame left
+  })
+})
