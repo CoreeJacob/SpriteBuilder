@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { ContextMenu, type MenuEntry, type MenuRequest } from '@/app/ContextMenu'
 import { Icon } from '@/app/Icon'
 import { drawPixels } from '@/lib/canvas'
 import { InsertImageDialog } from './InsertImageDialog'
@@ -26,6 +27,8 @@ export function LayersPanel() {
   const [dragging, setDragging] = useState<string | null>(null)
   const [drop, setDrop] = useState<DropTarget | null>(null)
   const [inserting, setInserting] = useState(false)
+  const [menu, setMenu] = useState<MenuRequest | null>(null)
+  const closeMenu = useCallback(() => setMenu(null), [])
   const finishOpacity = useRef<(() => void) | null>(null)
   const s = useStudio.getState()
 
@@ -36,6 +39,28 @@ export function LayersPanel() {
   const rename = (id: string, name: string): void => {
     setEditing(null)
     if (name.trim()) s.renameLayer(id, name)
+  }
+  const deleteActive = (): void => {
+    if (window.confirm(`Delete "${s.activeLayer()?.name}"? (You can undo this.)`)) s.deleteLayer()
+  }
+
+  /** Right-click menu for a layer (it becomes the current layer first, so the actions apply to it). */
+  const layerMenu = (id: string): MenuEntry[] => {
+    const i = doc.layers.findIndex((l) => l.id === id)
+    const layer = doc.layers[i]
+    return [
+      { label: 'Rename…', icon: 'rename', onSelect: () => setEditing(id) },
+      { label: 'Duplicate Layer', icon: 'copy', onSelect: s.duplicateLayer },
+      { label: 'New Layer Above', icon: 'plus', onSelect: s.addLayer },
+      { label: 'Insert Image Above…', icon: 'image', onSelect: () => setInserting(true) },
+      'separator',
+      { label: 'Move Up', icon: 'arrowUp', disabled: i === doc.layers.length - 1, onSelect: () => s.moveLayer(1) },
+      { label: 'Move Down', icon: 'arrowDown', disabled: i === 0, onSelect: () => s.moveLayer(-1) },
+      { label: 'Merge Down', icon: 'merge', disabled: i === 0, onSelect: s.mergeDown },
+      { label: layer.visible ? 'Hide Layer' : 'Show Layer', icon: layer.visible ? 'eyeOff' : 'eye', onSelect: () => s.toggleLayerVisible(id) },
+      'separator',
+      { label: 'Delete Layer', icon: 'trash', danger: true, disabled: single, onSelect: deleteActive }
+    ]
   }
 
   return (
@@ -63,7 +88,7 @@ export function LayersPanel() {
           </button>
           <button
             className="icon-btn"
-            onClick={() => window.confirm(`Delete "${active?.name}"? (You can undo this.)`) && s.deleteLayer()}
+            onClick={deleteActive}
             disabled={single}
             title="Delete layer"
           >
@@ -85,6 +110,11 @@ export function LayersPanel() {
             ].join(' ')}
             onClick={() => s.setActiveLayer(layer.id)}
             onDoubleClick={() => setEditing(layer.id)}
+            onContextMenu={(e) => {
+              e.preventDefault()
+              s.setActiveLayer(layer.id)
+              setMenu({ x: e.clientX, y: e.clientY, entries: layerMenu(layer.id) })
+            }}
             // Drag a row up or down to restack it.
             draggable={editing !== layer.id}
             onDragStart={(e) => {
@@ -140,7 +170,7 @@ export function LayersPanel() {
                 }}
               />
             ) : (
-              <span className="layer-name" title="Double-click to rename · drag to reorder">
+              <span className="layer-name" title="Double-click to rename · drag to reorder · right-click for more">
                 {layer.name}
               </span>
             )}
@@ -169,6 +199,7 @@ export function LayersPanel() {
         </label>
       )}
       {inserting && <InsertImageDialog onClose={() => setInserting(false)} />}
+      {menu && <ContextMenu menu={menu} onClose={closeMenu} />}
     </section>
   )
 }
