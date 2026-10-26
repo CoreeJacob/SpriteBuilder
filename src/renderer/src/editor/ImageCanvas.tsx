@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
+import { useEffect, useMemo, useRef, type PointerEvent } from 'react'
 import { drawPixels } from '@/lib/canvas'
+import { useElementSize } from '@/lib/useElementSize'
 import { normalizeRect, toHex } from '@/studio/raster'
 import { adjust, clampRect, isIdentity, makeTransparent, pixelAt, sliceRects, type Img, type Rect } from './ops'
 import { useEditor } from './store'
@@ -21,22 +22,13 @@ export function ImageCanvas({ onHover }: { onHover: (info: HoverInfo | null) => 
   const mode = useEditor((s) => s.mode)
   const cropRect = useEditor((s) => s.cropRect)
   const slice = useEditor((s) => s.slice)
-  const viewportRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const drag = useRef<Drag | null>(null)
-  const [viewport, setViewport] = useState({ w: 800, h: 600 })
+  const [viewportRef, viewport] = useElementSize<HTMLDivElement>({ w: 800, h: 600 })
 
   // Adjustments preview live without changing the image until applied.
   const shown: Img = useMemo(() => (isIdentity(adjustments) ? image : adjust(image, adjustments)), [image, adjustments])
   const sliceCells = useMemo(() => (mode === 'slice' ? sliceRects(shown, slice) : []), [mode, shown, slice])
-
-  useEffect(() => {
-    const el = viewportRef.current
-    if (!el) return
-    const observer = new ResizeObserver(([entry]) => setViewport({ w: entry.contentRect.width, h: entry.contentRect.height }))
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [])
 
   useEffect(() => {
     const canvas = canvasRef.current

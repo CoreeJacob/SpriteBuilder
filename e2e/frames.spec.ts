@@ -1,11 +1,8 @@
-import { check, menuItem, test, type App } from './support/app'
+import { check, test, type App } from './support/app'
 
 const cells = (app: App) => app.js<number>(`document.querySelectorAll('.frame-cell').length`)
 const counter = (app: App) => app.js<string>(`document.querySelector('.frame-counter').textContent`)
-const labels = (app: App) =>
-  app.js<string[]>(`[...document.querySelectorAll('.context-menu .menu-item')].map(b => b.querySelector('.menu-label').textContent + (b.disabled ? ' (off)' : ''))`)
 const frame = (i: number) => `document.querySelectorAll('.frame-cell')[${i}]`
-const pick = (app: App, label: string) => app.js(`${menuItem(label)}.click()`).then(() => app.settle())
 
 test('right-clicking frames: duplicate, add, move, timing and delete', async ({ app }) => {
   await app.newSprite(8)
@@ -15,32 +12,32 @@ test('right-clicking frames: duplicate, add, move, timing and delete', async ({ 
 
   await app.rightClick(frame(0))
   await check('right-clicking a frame selects it', (await counter(app)) === 'Frame 1 / 2', await counter(app))
-  const menu = await labels(app)
+  const menu = await app.menuLabels()
   const expected = ['Duplicate Frame', 'New Empty Frame Before', 'New Empty Frame After', 'Move Left (off)', 'Move Right', 'Frame Duration…', 'Delete Frame']
   await check('the frame menu has the frame actions (Move Left is off for the first frame)', expected.every((l) => menu.includes(l)), menu)
 
-  await pick(app, 'Duplicate Frame')
+  await app.pickMenu('Duplicate Frame')
   await check('Duplicate Frame copies it, right after', (await cells(app)) === 3 && (await counter(app)) === 'Frame 2 / 3' && (await app.px(1, 1)) !== 'empty')
 
   await app.rightClick(frame(0))
-  await pick(app, 'New Empty Frame Before')
+  await app.pickMenu('New Empty Frame Before')
   await check('New Empty Frame Before adds an empty first frame', (await cells(app)) === 4 && (await counter(app)) === 'Frame 1 / 4' && (await app.px(1, 1)) === 'empty')
 
   await app.rightClick(frame(0))
-  await pick(app, 'Move Right')
+  await app.pickMenu('Move Right')
   await check('Move Right swaps it with the next frame', (await counter(app)) === 'Frame 2 / 4')
   await app.js(`${frame(0)}.click()`)
   await app.settle()
   await check('…so the drawn frame is now first', (await app.px(1, 1)) !== 'empty')
 
   await app.rightClick(frame(0))
-  await pick(app, 'Frame Duration…')
+  await app.pickMenu('Frame Duration…')
   await app.answer('250')
   const timing = await app.js<string>(`(${frame(0)}.getAttribute('title') || ${frame(0)}.dataset.tip)`)
   await check('Frame Duration… sets that frame’s timing', timing.includes('250 ms'), timing)
 
   await app.rightClick(frame(3))
-  await pick(app, 'Delete Frame')
+  await app.pickMenu('Delete Frame')
   await check('Delete Frame removes it', (await cells(app)) === 3)
   await app.undo()
   await check('…and undo brings it back', (await cells(app)) === 4)
@@ -50,16 +47,16 @@ test('right-clicking frames: duplicate, add, move, timing and delete', async ({ 
   await app.js(`${frame(2)}.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }))`)
   await app.settle()
   await app.rightClick(frame(1))
-  const several = await labels(app)
+  const several = await app.menuLabels()
   await check('for a selection it offers to name and delete the whole run', several.includes('Name Frames 2–3…') && several.includes('Delete Frames 2–3') && several.includes('Duplicate Frame (off)'), several)
-  await pick(app, 'Name Frames 2–3…')
+  await app.pickMenu('Name Frames 2–3…')
   await app.answer('blink')
   await check('naming them adds a tag over those frames', (await app.js<string>(`document.querySelector('.tag-bar')?.textContent ?? ''`)).includes('blink'))
   await app.js(`${frame(1)}.click()`)
   await app.js(`${frame(2)}.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }))`)
   await app.settle()
   await app.rightClick(frame(2))
-  await pick(app, 'Delete Frames 2–3')
+  await app.pickMenu('Delete Frames 2–3')
   await check('Delete Frames removes the whole run at once', (await cells(app)) === 2)
   await app.undo()
   await check('…and one undo brings both back', (await cells(app)) === 4)

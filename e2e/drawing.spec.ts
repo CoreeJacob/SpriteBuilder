@@ -10,6 +10,7 @@ const openBrushMenu = (app: App) => app.js(`${byTip('.tool-popover .tool', 'Brus
 /** A freehand pencil drag through every listed cell, one pointer move per cell. */
 async function stroke(app: App, cells: Array<[number, number]>): Promise<void> {
   await app.remeasure()
+  await app.hoverBeforePress(app.cell(...cells[0]))
   await app.mouse('mousePressed', app.cell(...cells[0]))
   // One move per frame: Chromium merges moves that arrive in the same frame, which would skip cells.
   for (const c of cells.slice(1)) {

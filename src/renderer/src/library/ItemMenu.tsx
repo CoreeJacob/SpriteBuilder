@@ -1,9 +1,9 @@
 // The right-click menu for library images: the same actions as the details panel.
 
-import { useCallback, useState, type MouseEvent } from 'react'
+import { type MouseEvent } from 'react'
 import { stripExt } from '@shared/paths'
 import type { LibraryItem } from '@shared/types'
-import { ContextMenu, type MenuEntry, type MenuRequest } from '@/app/ContextMenu'
+import { useContextMenu, type MenuEntry } from '@/app/ContextMenu'
 import { attempt, useApp } from '@/app/store'
 import { openInEditor } from '@/editor/io'
 import { canvasToBlob, imageToCanvas, loadImage } from '@/lib/canvas'
@@ -100,8 +100,7 @@ function entriesFor(items: LibraryItem[], folders: string[]): MenuEntry[] {
 
 /** Right-click handling for library images: picks what the menu acts on, then shows it. */
 export function useItemMenu() {
-  const [menu, setMenu] = useState<MenuRequest | null>(null)
-  const close = useCallback(() => setMenu(null), [])
+  const menu = useContextMenu()
 
   const open = (e: MouseEvent, item: LibraryItem): void => {
     e.preventDefault()
@@ -111,8 +110,8 @@ export function useItemMenu() {
     if (!app.selection.includes(item.path)) app.select([item.path])
     const chosen = new Set(app.selection.includes(item.path) ? app.selection : [item.path])
     const items = app.library?.items.filter((i) => chosen.has(i.path)) ?? [item]
-    setMenu({ x: e.clientX, y: e.clientY, entries: entriesFor(items, app.library?.folders ?? []) })
+    menu.show(e.clientX, e.clientY, entriesFor(items, app.library?.folders ?? []))
   }
 
-  return { open, element: menu ? <ContextMenu menu={menu} onClose={close} /> : null }
+  return { open, element: menu.element }
 }

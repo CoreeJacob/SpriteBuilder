@@ -77,7 +77,7 @@ test('exporting PNGs and GIFs, and cancelling', async ({ app }) => {
   await app.answerSaveDialogs(copied)
   await app.showAll('walk-sheet.png')
   await app.rightClick(card('walk-sheet.png'))
-  await app.js(`${menuItem('Export…')}.click()`)
+  await app.pickMenu('Export…')
   const original = await readFile(path.join(app.dirs.library, 'walk-sheet.png'))
   const same = await app.until(async () => existsSync(copied) && (await readFile(copied)).equals(original))
   await check('Library Export… copies the file unchanged', same)

@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
-import { byText, check, menuItem, sidebar, test, type App } from './support/app'
+import { byText, check, sidebar, test, type App } from './support/app'
 
 interface AtlasFrame {
   frame: { x: number; y: number; w: number; h: number }
@@ -22,7 +22,7 @@ const dialogTitle = (app: App) => app.js<string>(`document.querySelector('.atlas
 async function openAtlas(app: App, folder: string): Promise<void> {
   await app.goTo('Library')
   await app.rightClick(sidebar(folder))
-  await app.js(`${menuItem('Pack into Atlas…')}.click()`)
+  await app.pickMenu('Pack into Atlas…')
   await app.untilJs(`/sprite/.test(document.querySelector('.atlas-stats')?.textContent ?? '')`)
 }
 

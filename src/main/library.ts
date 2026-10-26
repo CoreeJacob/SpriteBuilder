@@ -221,10 +221,11 @@ export class Library {
   importFiles(destFolder: string, absolutePaths: string[]): Promise<ImportResult> {
     return this.mutate(async () => {
       const result: ImportResult = { imported: [], moved: [], unchanged: [] }
+      const root = await fs.realpath(this.root).catch(() => this.root)
       for (const source of absolutePaths) {
         const name = path.basename(source)
         if (!isImage(name)) continue
-        const own = await this.ownPath(source)
+        const own = await this.ownPath(source, root)
         if (own) {
           const target = await this.moveInto(own, destFolder)
           result[target === own ? 'unchanged' : 'moved'].push(target)
@@ -267,10 +268,9 @@ export class Library {
     return target
   }
 
-  /** The library path of an absolute file path, if that file is one of this library's items. */
-  private async ownPath(absolute: string): Promise<string | null> {
+  /** The library path of an absolute file path, if that file is one of this library's items. `root` is the library's real path. */
+  private async ownPath(absolute: string, root: string): Promise<string | null> {
     const real = await fs.realpath(absolute).catch(() => path.resolve(absolute))
-    const root = await fs.realpath(this.root).catch(() => this.root)
     if (!real.startsWith(root + path.sep)) return null
     const rel = real.slice(root.length + 1).split(path.sep).join('/')
     return this.index.items[rel] ? rel : null

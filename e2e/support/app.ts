@@ -69,7 +69,10 @@ export class App {
   static async launch(dirs: Dirs): Promise<App> {
     const env = { ...process.env, SPRITEBUILDER_USER_DATA: dirs.userData } as Record<string, string>
     delete env.ELECTRON_RUN_AS_NODE // set when run from some tools; it would start Electron as plain Node
-    const app = await electron.launch({ args: [ROOT], cwd: ROOT, env })
+    // Several test windows overlap, and Chromium normally slows down windows that are covered
+    // (pausing their animation frames and timers), which makes input to them arrive late or not at all.
+    const unthrottled = ['--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling']
+    const app = await electron.launch({ args: [ROOT, ...unthrottled], cwd: ROOT, env })
     const page = await app.firstWindow()
     await page.waitForSelector('.rail-btn')
     await page.waitForFunction(`!document.querySelector('.loading')`)
@@ -206,7 +209,21 @@ export class App {
       from.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: dt })); return over.defaultPrevented })()`)
   }
 
+  /**
+   * Presses a key. It's delivered straight to the focused element (as a keydown and keyup), because
+   * key presses sent through the window are lost while another test's window is in front, and the
+   * app handles all its shortcuts itself. Use `nativeKey` for what only the browser does (stepping
+   * a number box with ↑/↓).
+   */
   async key(key: string, code: string, modifiers = 0): Promise<void> {
+    const init = { key, code, altKey: !!(modifiers & ALT), metaKey: !!(modifiers & META), shiftKey: !!(modifiers & SHIFT), bubbles: true, cancelable: true }
+    await this.js(`(() => { const t = document.activeElement ?? document.body; const o = ${JSON.stringify(init)}
+      t.dispatchEvent(new KeyboardEvent('keydown', o)); t.dispatchEvent(new KeyboardEvent('keyup', o)); return 1 })()`)
+    await this.settle()
+  }
+
+  /** A real key press through the window, for the browser's own behaviour. Needs the window in front. */
+  async nativeKey(key: string, code: string, modifiers = 0): Promise<void> {
     const named: Record<string, number> = { Escape: 27, Enter: 13, Backspace: 8, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40 }
     const windowsVirtualKeyCode = key.length === 1 ? key.toUpperCase().charCodeAt(0) : named[key]
     await this.call('Input.dispatchKeyEvent', { type: 'keyDown', key, code, modifiers, windowsVirtualKeyCode })
@@ -228,14 +245,33 @@ export class App {
     await this.settle()
   }
 
+  /** The open right-click menu's items (not its sub-menus), with " (off)" after greyed-out ones. */
+  menuLabels(): Promise<string[]> {
+    return this.js(
+      `[...document.querySelectorAll('.context-menu:not(.submenu) > .menu-item-wrap > .menu-item')].map(b => b.querySelector('.menu-label').textContent + (b.disabled ? ' (off)' : ''))`
+    )
+  }
+
+  /** Clicks an item in the open right-click menu. */
+  async pickMenu(label: string): Promise<void> {
+    await this.js(`${menuItem(label)}.click()`)
+    await this.settle()
+  }
+
+  /** Pixel Studio's layer names, top layer first (as listed). */
+  layerNames(): Promise<string[]> {
+    return this.js(`[...document.querySelectorAll('.layer-name')].map(l => l.textContent)`)
+  }
+
   /** Closes an open dropdown menu by clicking beside it. */
   async closeMenu(): Promise<void> {
-    await this.js(`document.querySelector('.menu-scrim')?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); 1`)
-    await this.settle()
     // When the menu's backdrop disappears under the (still) mouse, Chromium sends a made-up mouse
-    // move shortly after to refresh hover effects, sometimes with an out-of-date position. Let it
-    // pass before the next drag, or it lands in the middle of that drag as a stray step.
-    await this.wait(150)
+    // move a moment later to refresh hover effects, sometimes with an out-of-date position. Wait
+    // for it (or half a second if none comes), or it lands in the middle of the next drag.
+    await this.js(`(async () => {
+      const moved = new Promise(r => { const t = setTimeout(r, 500); addEventListener('mousemove', () => (clearTimeout(t), r()), { once: true, capture: true }) })
+      document.querySelector('.menu-scrim')?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+      await moved; return 1 })()`)
     await this.settle()
   }
 
@@ -271,7 +307,7 @@ export class App {
 
   /** Presses at one window point, moves through the others and lets go there. Measure the points just before. */
   async drag(points: Point[], modifiers = 0): Promise<void> {
-    await this.mouse('mouseMoved', points[0], { buttons: 0 })
+    await this.hoverBeforePress(points[0])
     await this.mouse('mousePressed', points[0], { modifiers })
     for (const p of points.slice(1)) await this.mouse('mouseMoved', p, { modifiers })
     await this.mouse('mouseReleased', points.at(-1)!, { modifiers })
@@ -285,8 +321,19 @@ export class App {
     )
   }
 
+  /**
+   * Moves the pointer (no button) to where a press will start and lets the page settle. After a
+   * layout change Chromium sends a made-up hover move from the last pointer position; this makes
+   * any such move land here, harmlessly, instead of in the middle of the press that follows.
+   */
+  async hoverBeforePress(point: Point): Promise<void> {
+    await this.mouse('mouseMoved', point, { buttons: 0 })
+    await this.settle()
+  }
+
   async dragCells(from: Point, to: Point, modifiers = 0): Promise<void> {
     await this.remeasure()
+    await this.hoverBeforePress(this.cell(...from))
     await this.mouse('mousePressed', this.cell(...from), { modifiers })
     await this.mouse('mouseMoved', this.cell(((from[0] + to[0]) / 2) | 0, ((from[1] + to[1]) / 2) | 0), { modifiers })
     await this.mouse('mouseMoved', this.cell(...to), { modifiers })

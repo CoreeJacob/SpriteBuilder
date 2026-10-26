@@ -124,7 +124,7 @@ export function fitWithin(w: number, h: number, maxW: number, maxH: number): [nu
  * number (so every pixel stays square); bigger ones shrink to fit.
  */
 export function fitToCanvas(w: number, h: number, maxW: number, maxH: number): [number, number] {
-  const times = Math.floor(Math.min(maxW / w, maxH / h))
+  const times = previewZoom(w, h, maxW, maxH)
   return times >= 1 ? [w * times, h * times] : fitWithin(w, h, maxW, maxH)
 }
 

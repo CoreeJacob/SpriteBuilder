@@ -60,6 +60,16 @@ describe('pack', () => {
     expect(pack([], { maxSize: 256, padding: 0, powerOfTwo: false })).toBeNull()
   })
 
+  it('packs a big folder quickly, into a roughly square atlas', () => {
+    const sizes = randomSizes(800, 11)
+    const start = performance.now()
+    const p = pack(sizes, { maxSize: 4096, padding: 2, powerOfTwo: false })!
+    // About 0.1 s normally; it took 8 s before. The limit allows for a busy machine.
+    expect(performance.now() - start).toBeLessThan(1500)
+    expect(Math.max(p.width, p.height) / Math.min(p.width, p.height)).toBeLessThan(1.25) // not a long thin strip
+    expect(sizes.reduce((a, s) => a + s.w * s.h, 0) / (p.width * p.height)).toBeGreaterThan(0.7)
+  })
+
   it('gives the same result every time', () => {
     const sizes = randomSizes(30)
     expect(pack(sizes, { maxSize: 512, padding: 1, powerOfTwo: false })).toEqual(pack(sizes, { maxSize: 512, padding: 1, powerOfTwo: false }))

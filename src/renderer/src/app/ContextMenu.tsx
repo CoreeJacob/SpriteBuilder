@@ -1,7 +1,7 @@
 // A right-click menu: stays inside the window, closes on Escape, scrolling or a click
 // elsewhere, and supports one level of sub-menu (e.g. "Move to ▸").
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Icon, type IconName } from './Icon'
 
 export type MenuEntry =
@@ -39,6 +39,14 @@ function useFitOnScreen(ref: React.RefObject<HTMLDivElement | null>, x: number, 
     setPos({ left: Math.max(EDGE, left), top: Math.max(EDGE, top) })
   }, [ref, x, y, flipFrom])
   return pos
+}
+
+/** A right-click menu for a component: `show` opens it at a point; render `element` somewhere. */
+export function useContextMenu(): { show: (x: number, y: number, entries: MenuEntry[]) => void; element: ReactNode } {
+  const [menu, setMenu] = useState<MenuRequest | null>(null)
+  const close = useCallback(() => setMenu(null), [])
+  const show = useCallback((x: number, y: number, entries: MenuEntry[]) => setMenu({ x, y, entries }), [])
+  return { show, element: menu ? <ContextMenu menu={menu} onClose={close} /> : null }
 }
 
 export function ContextMenu({ menu, onClose }: { menu: MenuRequest; onClose: () => void }) {

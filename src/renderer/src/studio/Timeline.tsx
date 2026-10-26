@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { ContextMenu, type MenuEntry, type MenuRequest } from '@/app/ContextMenu'
+import { useEffect, useRef, useState } from 'react'
+import { useContextMenu, type MenuEntry } from '@/app/ContextMenu'
 import { Icon } from '@/app/Icon'
 import { NumberInput } from '@/app/NumberInput'
 import { useApp } from '@/app/store'
@@ -28,8 +28,7 @@ export function Timeline() {
   useStudio((s) => s.version) // frames change in place; re-render on every edit
   const [drop, setDrop] = useState<number | null>(null)
   const [renaming, setRenaming] = useState<string | null>(null)
-  const [menu, setMenu] = useState<MenuRequest | null>(null)
-  const closeMenu = useCallback(() => setMenu(null), [])
+  const menu = useContextMenu()
   const s = useStudio.getState()
   const app = useApp.getState()
 
@@ -208,7 +207,7 @@ export function Timeline() {
               e.preventDefault()
               // Right-clicking outside the selected frames selects this one, as in the Library.
               if (!(ranged && i >= rangeFrom && i <= rangeTo)) s.setFrame(i)
-              setMenu({ x: e.clientX, y: e.clientY, entries: frameMenu(i) })
+              menu.show(e.clientX, e.clientY, frameMenu(i))
             }}
             draggable
             onDragStart={(e) => {
@@ -244,7 +243,7 @@ export function Timeline() {
         </button>
       </div>
       </div>
-      {menu && <ContextMenu menu={menu} onClose={closeMenu} />}
+      {menu.element}
     </div>
   )
 }

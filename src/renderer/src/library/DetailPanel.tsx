@@ -5,6 +5,7 @@ import { Icon } from '@/app/Icon'
 import { attempt, useApp } from '@/app/store'
 import { itemUrl } from '@/lib/fileUrl'
 import { formatBytes, formatDateTime, formatDimensions } from '@/lib/format'
+import { useElementSize } from '@/lib/useElementSize'
 import { openInEditor } from '@/editor/io'
 import { frameCanvas, openInStudio } from '@/studio/io'
 import { parseDoc } from '@/studio/model'
@@ -46,21 +47,12 @@ function SinglePanel({ item, allTags, folders }: { item: LibraryItem; allTags: s
   const [zoom, setZoom] = useState<Zoom>('fit')
   const [paused, setPaused] = useState(false)
   const big = useApp((s) => s.bigLibraryPreview)
-  const boxRef = useRef<HTMLDivElement>(null)
-  const [box, setBox] = useState({ w: 250, h: 216 })
+  const [boxRef, box] = useElementSize<HTMLDivElement>({ w: 250, h: 216 })
   const [notes, setNotes] = useState(item.notes)
   const [name, setName] = useState(stripExt(item.name))
   const imgRef = useRef<HTMLImageElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const animated = (item.frames ?? 1) > 1
-
-  useEffect(() => {
-    const el = boxRef.current
-    if (!el) return
-    const observer = new ResizeObserver(([entry]) => setBox({ w: entry.contentRect.width, h: entry.contentRect.height }))
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [])
 
   useEffect(() => setNotes(item.notes), [item.notes])
   useEffect(() => setName(stripExt(item.name)), [item.name])

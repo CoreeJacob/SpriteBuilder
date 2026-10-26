@@ -14,7 +14,8 @@ test('drawing tools, mirror, layers, selection and clipboard', async ({ app }) =
   await app.tool('o')
   await app.tool('f')
   await app.dragCells([8, 8], [14, 14])
-  await check('filled ellipse: centre filled', (await app.px(11, 11)) !== 'empty')
+  const ellipse = { centre: await app.px(11, 11), edge: await app.px(11, 8), fillOn: await app.js(`!!document.querySelector('.tool.small.on')`) }
+  await check('filled ellipse: centre filled', ellipse.centre !== 'empty', ellipse)
   await check('filled ellipse: box corner empty', (await app.px(8, 8)) === 'empty')
   await app.tool('f')
 

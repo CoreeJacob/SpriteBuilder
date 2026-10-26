@@ -19,6 +19,7 @@ import { countColors, previewZoom, rankColors, toHex } from './raster'
 import { fitZoom, useStudio, ZOOM_LEVELS } from './store'
 import { pixelsToCanvas } from '@/lib/canvas'
 import { isTyping, turnFromKey } from '@/lib/dom'
+import { useElementSize } from '@/lib/useElementSize'
 
 /** Image files dragged in from Finder land on a new layer, like Insert Image. */
 function CanvasDropZone({ children }: { children: React.ReactNode }) {
@@ -355,8 +356,7 @@ function SidePanel({ hover }: { hover: [number, number] | null }) {
   const floating = useStudio((s) => s.floating)
   const [tiled, setTiled] = useState(false)
   const previewRef = useRef<HTMLCanvasElement>(null)
-  const boxRef = useRef<HTMLDivElement>(null)
-  const [box, setBox] = useState({ w: 236, h: 210 })
+  const [boxRef, box] = useElementSize<HTMLDivElement>({ w: 236, h: 210 })
   const bigPreview = useApp((s) => s.bigPreview)
   const previewSize = useApp((s) => s.previewSize)
   const { setBigPreview, setPreviewSize } = useApp.getState()
@@ -395,14 +395,6 @@ function SidePanel({ hover }: { hover: [number, number] | null }) {
     })
     return rankColors(counts).map(({ color }) => toHex(color))
   }, [doc, settledVersion])
-
-  useEffect(() => {
-    const el = boxRef.current
-    if (!el) return
-    const observer = new ResizeObserver(([entry]) => setBox({ w: entry.contentRect.width, h: entry.contentRect.height }))
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [])
 
   // Live preview, drawn at its real size; the page enlarges it (with hard pixel edges) to fit.
   const repeat = tiled ? 3 : 1

@@ -1,4 +1,4 @@
-import { byTip, card, check, menuItem, test, type App } from './support/app'
+import { byTip, card, check, test, type App } from './support/app'
 
 const fileBytes = (app: App, p: string) => app.js<number>(`(async () => (await (await fetch('sprite://library/${encodeURI(p)}?t=' + Date.now())).arrayBuffer()).byteLength)()`)
 const studioButton = (app: App, text: string) => app.js(`[...document.querySelectorAll('.studio-bar .btn')].find(b => b.textContent.trim().startsWith(${JSON.stringify(text)})).click()`)
@@ -16,7 +16,7 @@ test('Save and Save As update the right file', async ({ app }) => {
 
   // Right-click → Duplicate
   await app.rightClick(card('dupsrc.png'))
-  await app.js(`${menuItem('Duplicate')}.click()`)
+  await app.pickMenu('Duplicate')
   await app.waitForItem('dupsrc 2.png')
   await check('duplicate created', (await app.files('dupsrc')).join() === 'dupsrc 2.png,dupsrc.png', await app.files('dupsrc'))
   const before = await fileBytes(app, 'dupsrc 2.png')
@@ -59,7 +59,7 @@ test('Save and Save As update the right file', async ({ app }) => {
   await app.importCopy('Tiles/grass.png', 'edsrc.png')
   await app.showAll('edsrc.png')
   await app.rightClick(card('edsrc.png'))
-  await app.js(`${menuItem('Edit Image')}.click()`)
+  await app.pickMenu('Edit Image')
   await app.untilJs(`!!document.querySelector('.editor-canvas')`)
   await editorFlip(app)
   await studioButton(app, 'Save as Copy')

@@ -1,6 +1,6 @@
-import { useCallback, useMemo, useState, type DragEvent } from 'react'
+import { useMemo, useState, type DragEvent } from 'react'
 import { basenameRel, dirnameRel, isInside } from '@shared/paths'
-import { ContextMenu, type MenuEntry, type MenuRequest } from '@/app/ContextMenu'
+import { useContextMenu, type MenuEntry } from '@/app/ContextMenu'
 import { backupLibrary, changeLibraryFolder, reportImport, restoreLibrary } from '@/app/libraryActions'
 import { Icon } from '@/app/Icon'
 import { attempt, useApp } from '@/app/store'
@@ -70,10 +70,9 @@ export function FolderSidebar() {
   const scope = useApp((s) => s.scope)
   const setScope = useApp((s) => s.setScope)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
-  const [menu, setMenu] = useState<MenuRequest | null>(null)
+  const menu = useContextMenu()
   /** The folder being packed into an atlas, while its dialog is open. */
   const [packing, setPacking] = useState<string | null>(null)
-  const closeMenu = useCallback(() => setMenu(null), [])
 
   const counts = useMemo(() => {
     const direct = new Map<string, number>()
@@ -182,7 +181,7 @@ export function FolderSidebar() {
           count={counts.get('') ?? 0}
           active={isActive({ kind: 'folder', path: '' })}
           onClick={() => setScope({ kind: 'folder', path: '' })}
-          onMenu={(e) => setMenu({ x: e.clientX, y: e.clientY, entries: folderMenu('') })}
+          onMenu={(e) => menu.show(e.clientX, e.clientY, folderMenu(''))}
           dropFolder=""
         />
         {visibleFolders.map((folder) => {
@@ -196,7 +195,7 @@ export function FolderSidebar() {
               count={counts.get(folder) ?? 0}
               active={isActive({ kind: 'folder', path: folder })}
               onClick={() => setScope({ kind: 'folder', path: folder })}
-              onMenu={(e) => setMenu({ x: e.clientX, y: e.clientY, entries: folderMenu(folder) })}
+              onMenu={(e) => menu.show(e.clientX, e.clientY, folderMenu(folder))}
               expander={hasChildren ? { open: !collapsed.has(folder), toggle: () => toggle(folder) } : undefined}
               dropFolder={folder}
               dragFolder={folder}
@@ -218,16 +217,12 @@ export function FolderSidebar() {
             title="Back up or restore the library"
             onClick={(e) => {
               const r = e.currentTarget.getBoundingClientRect()
-              setMenu({
-                x: r.left,
-                y: r.top - 4,
-                entries: [
-                  { label: 'Back Up Library…', icon: 'archive', onSelect: () => void backupLibrary() },
-                  { label: 'Restore from Backup…', icon: 'import', onSelect: () => void restoreLibrary() },
-                  'separator',
-                  { label: 'Show Library in Finder', icon: 'reveal', onSelect: () => void attempt(() => window.api.revealItem('')) }
-                ]
-              })
+              menu.show(r.left, r.top - 4, [
+                { label: 'Back Up Library…', icon: 'archive', onSelect: () => void backupLibrary() },
+                { label: 'Restore from Backup…', icon: 'import', onSelect: () => void restoreLibrary() },
+                'separator',
+                { label: 'Show Library in Finder', icon: 'reveal', onSelect: () => void attempt(() => window.api.revealItem('')) }
+              ])
             }}
           >
             <Icon name="more" />
@@ -235,7 +230,7 @@ export function FolderSidebar() {
         </div>
       </div>
 
-      {menu && <ContextMenu menu={menu} onClose={closeMenu} />}
+      {menu.element}
       {packing !== null && <AtlasDialog folder={packing} onClose={() => setPacking(null)} />}
     </aside>
   )

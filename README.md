@@ -9,7 +9,7 @@ npm install
 npm run dev      # app with live reload
 npm test         # unit tests
 npm run test:e2e # builds the app, then clicks through it on a throwaway library (windows open while it runs)
-npm run test:stress # the same, 6 at a time and each test 3 times, to shake out timing problems
+npm run test:stress # the same with every test run 3 times, to shake out timing problems
 npm run dist     # build a .dmg into dist/
 ```
 

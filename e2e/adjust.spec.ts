@@ -25,7 +25,7 @@ test('Image Editor adjustments take typed numbers as well as the slider', async 
   await check('a number past the end is kept in range (hue stops at 180)', (await values(app, 'Hue')).box === '180', await values(app, 'Hue'))
 
   await app.js(`${box('Saturation')}.focus()`)
-  await app.key('ArrowUp', 'ArrowUp')
+  await app.nativeKey('ArrowUp', 'ArrowUp')
   await check('↑ steps by 1', (await values(app, 'Saturation')).box === '1', await values(app, 'Saturation'))
   await app.key('ArrowUp', 'ArrowUp', SHIFT)
   await check('⇧↑ steps by 10', (await values(app, 'Saturation')).box === '11' && (await values(app, 'Saturation')).slider === '11', await values(app, 'Saturation'))

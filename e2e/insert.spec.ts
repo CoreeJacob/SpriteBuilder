@@ -1,6 +1,5 @@
 import { byText, byTip, check, SHIFT, test, type App } from './support/app'
 
-const layerNames = (app: App) => app.js<string[]>(`[...document.querySelectorAll('.layer-name')].map(l => l.textContent)`)
 const dialogOpen = (app: App) => app.js<boolean>(`!!document.querySelector('.insert-image-dialog')`)
 const openInsert = async (app: App) => {
   await app.js(`${byTip('.layer-actions button', 'Insert an image')}.click()`)
@@ -33,7 +32,7 @@ test('insert a library image or a dropped file as a new layer', async ({ app }) 
   await check('search narrows the list', found === 'knight.png', found)
   await choose(app, 'knight')
   await check('dialog closes after choosing', !(await dialogOpen(app)))
-  await check('new layer named after the image, on top', (await layerNames(app)).join() === 'knight,Layer 1', await layerNames(app))
+  await check('new layer named after the image, on top', (await app.layerNames()).join() === 'knight,Layer 1', await app.layerNames())
   await check('new layer is the active one', (await app.js(`document.querySelector('.layer-row.active .layer-name').textContent`)) === 'knight')
   await check('select tool is on', await app.js(`!!document.querySelector('.tool.on[title^="Select"]')`))
 
@@ -56,14 +55,14 @@ test('insert a library image or a dropped file as a new layer', async ({ app }) 
   await app.js(`document.activeElement?.blur(); 1`)
   await app.key('Escape', 'Escape') // put it down
   await app.undo()
-  await check('one undo removes the layer and the picture', (await layerNames(app)).join() === 'Layer 1' && (await filledCells(0, 0)) === 0, await layerNames(app))
+  await check('one undo removes the layer and the picture', (await app.layerNames()).join() === 'Layer 1' && (await filledCells(0, 0)) === 0, await app.layerNames())
   await app.redo()
-  await check('redo brings both back', (await layerNames(app)).includes('knight') && (await filledCells(0, 0)) === centred)
+  await check('redo brings both back', (await app.layerNames()).includes('knight') && (await filledCells(0, 0)) === centred)
 
   // A big image: full size, then scaled down to fit
   await openInsert(app)
   await choose(app, 'big-photo')
-  await check('600×400 photo kept full size hangs off the canvas', (await layerNames(app))[0] === 'big-photo' && (await app.px(0, 0)) !== 'empty' && (await app.px(15, 15)) !== 'empty')
+  await check('600×400 photo kept full size hangs off the canvas', (await app.layerNames())[0] === 'big-photo' && (await app.px(0, 0)) !== 'empty' && (await app.px(15, 15)) !== 'empty')
   await app.undo()
   await openInsert(app)
   await app.js(`document.querySelector('.insert-image-dialog input[type=checkbox]').click()`)
@@ -79,7 +78,7 @@ test('insert a library image or a dropped file as a new layer', async ({ app }) 
 
   await openInsert(app)
   await app.key('Escape', 'Escape')
-  await check('Escape closes the dialog without changes', !(await dialogOpen(app)) && (await layerNames(app)).length === 2)
+  await check('Escape closes the dialog without changes', !(await dialogOpen(app)) && (await app.layerNames()).length === 2)
 
   // Finder-style drops on the canvas
   const hint = await dropOnCanvas(
@@ -88,14 +87,14 @@ test('insert a library image or a dropped file as a new layer', async ({ app }) 
       return new File([await new Promise(r => c.toBlob(r, 'image/png'))], 'laser.png', { type: 'image/png' }) })()`
   )
   await check('dragging a file over the canvas shows the drop hint', hint === 'Drop to add as a new layer', hint)
-  await app.until(async () => (await layerNames(app))[0] === 'laser')
+  await app.until(async () => (await app.layerNames())[0] === 'laser')
   await app.settle()
   await check(
     'dropped file lands as its own layer, centred',
-    (await layerNames(app))[0] === 'laser' && (await app.px(7, 7)) === '#0000ff' && (await app.px(8, 8)) === '#0000ff' && (await app.px(9, 9)) === 'empty'
+    (await app.layerNames())[0] === 'laser' && (await app.px(7, 7)) === '#0000ff' && (await app.px(8, 8)) === '#0000ff' && (await app.px(9, 9)) === 'empty'
   )
   await dropOnCanvas(app, `new File(['hi'], 'notes.txt', { type: 'text/plain' })`)
-  await check('non-image drop is refused with a message', (await app.toast('Only image files')).includes('Only image files') && (await layerNames(app)).length === 3)
+  await check('non-image drop is refused with a message', (await app.toast('Only image files')).includes('Only image files') && (await app.layerNames()).length === 3)
 })
 
 test('the Image Editor picker shares the same chooser', async ({ app }) => {
@@ -120,7 +119,7 @@ test('resizing an inserted image: fit, handles and quick sizes', async ({ app })
   // Undo works straight away, before the picture is put down (the button used to be greyed out here).
   await check('Undo is available while the inserted picture is still lifted', await app.js(`!${byTip('.studio-bar button', 'Undo')}.disabled`))
   await app.undo()
-  await check('…and takes the picture and its layer away', (await layerNames(app)).join() === 'Layer 1')
+  await check('…and takes the picture and its layer away', (await app.layerNames()).join() === 'Layer 1')
 
   // Full size, centred at 12–19; drag the bottom-right handle out to 28,28 → 16×16 (2×)
   await openInsert(app)
@@ -147,5 +146,5 @@ test('resizing an inserted image: fit, handles and quick sizes', async ({ app })
   // It's all one step: placing it and undoing takes the layer away again
   await app.key('Enter', 'Enter')
   await app.undo()
-  await check('one undo removes the resized picture and its layer', (await layerNames(app)).join() === 'Layer 1' && (await app.px(12, 14)) === 'empty')
+  await check('one undo removes the resized picture and its layer', (await app.layerNames()).join() === 'Layer 1' && (await app.px(12, 14)) === 'empty')
 })

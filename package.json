@@ -15,7 +15,7 @@
     "install-app": "sh scripts/install-app.sh",
     "icon": "python3 scripts/make-icon.py",
     "test:e2e": "electron-vite build && playwright test",
-    "test:stress": "electron-vite build && playwright test --workers=6 --repeat-each=3"
+    "test:stress": "electron-vite build && playwright test --repeat-each=3"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",

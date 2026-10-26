@@ -57,19 +57,22 @@ function maxRects(sizes: Size[], binW: number, binH: number): Array<[number, num
     const r: Region = { x: best.x, y: best.y, w, h }
     placed[i] = [r.x, r.y]
     // Cut the placed rectangle out of every free space it overlaps…
-    const next: Region[] = []
+    const kept: Region[] = []
+    const created: Region[] = []
     for (const f of free) {
       if (!overlaps(f, r)) {
-        next.push(f)
+        kept.push(f)
         continue
       }
-      if (r.x > f.x) next.push({ x: f.x, y: f.y, w: r.x - f.x, h: f.h })
-      if (r.x + r.w < f.x + f.w) next.push({ x: r.x + r.w, y: f.y, w: f.x + f.w - r.x - r.w, h: f.h })
-      if (r.y > f.y) next.push({ x: f.x, y: f.y, w: f.w, h: r.y - f.y })
-      if (r.y + r.h < f.y + f.h) next.push({ x: f.x, y: r.y + r.h, w: f.w, h: f.y + f.h - r.y - r.h })
+      if (r.x > f.x) created.push({ x: f.x, y: f.y, w: r.x - f.x, h: f.h })
+      if (r.x + r.w < f.x + f.w) created.push({ x: r.x + r.w, y: f.y, w: f.x + f.w - r.x - r.w, h: f.h })
+      if (r.y > f.y) created.push({ x: f.x, y: f.y, w: f.w, h: r.y - f.y })
+      if (r.y + r.h < f.y + f.h) created.push({ x: f.x, y: r.y + r.h, w: f.w, h: f.y + f.h - r.y - r.h })
     }
-    // …then drop spaces that sit entirely inside another.
-    free = next.filter((a, ai) => !next.some((b, bi) => bi !== ai && contains(b, a) && (!contains(a, b) || bi < ai)))
+    // …then drop new spaces that sit entirely inside another. Only the new ones need checking: the
+    // untouched ones were never inside each other, and can't be inside a piece of a space they weren't in.
+    const fresh = created.filter((a, ai) => !kept.some((b) => contains(b, a)) && !created.some((b, bi) => bi !== ai && contains(b, a) && (!contains(a, b) || bi < ai)))
+    free = kept.concat(fresh)
   }
   return placed
 }
@@ -84,35 +87,54 @@ export interface Packing {
 }
 
 /**
- * Finds the smallest atlas the rectangles fit in (no bigger than `maxSize` on either side), with
- * `padding` empty pixels between neighbours. Tries a range of widths and keeps the smallest area.
+ * Finds a small, roughly square atlas the rectangles fit in (no bigger than `maxSize` on either
+ * side), with `padding` empty pixels between neighbours. Square-ish atlases suit engines and
+ * graphics cards best; a long thin strip runs into the size limit far sooner.
  */
 export function pack(sizes: Size[], { maxSize, padding, powerOfTwo }: Pick<AtlasOptions, 'maxSize' | 'padding' | 'powerOfTwo'>): Packing | null {
   if (!sizes.length) return null
+  const widest = Math.max(...sizes.map((s) => s.w))
+  const tallest = Math.max(...sizes.map((s) => s.h))
+  if (widest > maxSize || tallest > maxSize) return null
   // Each rectangle carries its gap on the right and bottom; the bin grows by one gap to match.
   const padded = sizes.map(({ w, h }) => ({ w: w + padding, h: h + padding }))
-  const widest = Math.max(...sizes.map((s) => s.w))
-  if (widest > maxSize || Math.max(...sizes.map((s) => s.h)) > maxSize) return null
-  const widths = new Set<number>()
-  if (powerOfTwo) for (let w = nextPowerOfTwo(widest); w <= maxSize; w *= 2) widths.add(w)
-  else {
-    const step = Math.max(1, Math.round((maxSize - widest) / 48))
-    for (let w = widest; w < maxSize; w += step) widths.add(w)
-    widths.add(Math.ceil(Math.sqrt(sizes.reduce((a, s) => a + (s.w + padding) * (s.h + padding), 0)))) // near-square guess
-    widths.add(maxSize)
-  }
-  let best: Packing | null = null
-  for (const w of [...widths].filter((x) => x >= widest && x <= maxSize).sort((a, b) => a - b)) {
-    const positions = maxRects(padded, w + padding, maxSize + padding)
-    if (!positions) continue
+  const area = padded.reduce((a, s) => a + s.w * s.h, 0)
+  const tryBin = (w: number, h: number) => maxRects(padded, w + padding, h + padding)
+  const finish = (positions: Array<[number, number]>): Packing => {
+    // Crop to the space actually used.
     let width = Math.max(...positions.map(([x], i) => x + sizes[i].w))
     let height = Math.max(...positions.map(([, y], i) => y + sizes[i].h))
     if (powerOfTwo) [width, height] = [nextPowerOfTwo(width), nextPowerOfTwo(height)]
-    if (width > maxSize || height > maxSize) continue
-    const better = !best || width * height < best.width * best.height || (width * height === best.width * best.height && Math.abs(width - height) < Math.abs(best.width - best.height))
-    if (better) best = { width, height, positions }
+    return { width, height, positions }
   }
-  return best
+
+  if (powerOfTwo) {
+    // Power-of-two sizes from smallest up (squarer first when the same size), until one fits.
+    const sides: number[] = []
+    for (let n = 1; n <= maxSize; n *= 2) sides.push(n)
+    const bins = sides
+      .flatMap((w) => sides.map((h) => [w, h] as const))
+      .filter(([w, h]) => w >= widest && h >= tallest && (w + padding) * (h + padding) >= area)
+      .sort((a, b) => a[0] * a[1] - b[0] * b[1] || Math.abs(a[0] - a[1]) - Math.abs(b[0] - b[1]))
+    for (const [w, h] of bins) {
+      const positions = tryBin(w, h)
+      if (positions) return finish(positions)
+    }
+    return null
+  }
+
+  // The smallest square that holds them all: halve the gap between "too small" and "fits" each try.
+  let fitting = tryBin(maxSize, maxSize)
+  if (!fitting) return null
+  let lo = Math.max(widest, tallest, Math.ceil(Math.sqrt(area)) - padding)
+  let hi = maxSize
+  while (lo < hi) {
+    const side = Math.floor((lo + hi) / 2)
+    const positions = tryBin(side, side)
+    if (positions) [hi, fitting] = [side, positions]
+    else lo = side + 1
+  }
+  return finish(fitting)
 }
 
 export interface Atlas extends Packing {

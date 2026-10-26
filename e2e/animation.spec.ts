@@ -25,7 +25,7 @@ test('layers and frames: drag to reorder, onion skin, FPS, preview, sprite sheet
     await app.js(`${byTip('.layer-actions button', 'New layer')}.click()`)
     await app.settle()
   }
-  const names = () => app.js<string[]>(`[...document.querySelectorAll('.layer-name')].map(e => e.textContent)`)
+  const names = () => app.layerNames()
   const before = await names()
   await app.dragDrop(`[...document.querySelectorAll('.layer-row')].at(-1)`, `document.querySelector('.layer-row')`, { at: { clientY: 'top + 3' } })
   await app.settle()

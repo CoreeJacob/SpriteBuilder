@@ -1,9 +1,5 @@
 import { card, check, META, menuItem, sidebar, test, type App } from './support/app'
 
-const menuLabels = (app: App) =>
-  app.js<string[]>(
-    `[...document.querySelectorAll('.context-menu:not(.submenu) > .menu-item-wrap > .menu-item')].map(b => b.querySelector('.menu-label').textContent + (b.disabled ? ' (off)' : ''))`
-  )
 const menuOpen = (app: App) => app.js<boolean>(`!!document.querySelector('.context-menu')`)
 
 test('right-click menus in the Library', async ({ app }) => {
@@ -12,21 +8,21 @@ test('right-click menus in the Library', async ({ app }) => {
 
   await app.rightClick(card('menu-test.png'))
   await check('right-click selects that image', (await app.js(`document.querySelector('.card.selected .card-name')?.textContent`)) === 'menu-test.png')
-  const single = await menuLabels(app)
+  const single = await app.menuLabels()
   const expected = ['Open in Pixel Studio', 'Edit Image', 'Rename…', 'Duplicate', 'Add to Favourites', 'Move to', 'Copy Image', 'Show in Finder', 'Export…', 'Move to Trash']
   await check('single-image menu has all the actions', expected.every((l) => single.includes(l)), single.join(' · '))
 
-  await app.js(`${menuItem('Rename…')}.click()`)
+  await app.pickMenu('Rename…')
   await app.answer('menu-renamed')
   await check('Rename… renames the file', await app.waitForItem('menu-renamed.png'))
   await app.untilJs(`!!${card('menu-renamed.png')}`)
 
   await app.rightClick(card('menu-renamed.png'))
-  await app.js(`${menuItem('Duplicate')}.click()`)
+  await app.pickMenu('Duplicate')
   await check('Duplicate makes a copy', await app.waitForItem('menu-renamed 2.png'))
 
   await app.rightClick(card('menu-renamed.png'))
-  await app.js(`${menuItem('Add to Favourites')}.click()`)
+  await app.pickMenu('Add to Favourites')
   const favourite = async () => (await app.library()).items.find((i) => i.path === 'menu-renamed.png')?.favorite === true
   await check('Add to Favourites works', await app.until(favourite))
 
@@ -42,7 +38,7 @@ test('right-click menus in the Library', async ({ app }) => {
   await check('…and moves the image there', await app.waitForItem('Tiles/menu-renamed.png'))
 
   await app.rightClick(card('menu-renamed 2.png'))
-  await app.js(`${menuItem('Copy Image')}.click()`)
+  await app.pickMenu('Copy Image')
   const copied = await app.toast('Copied menu-renamed 2.png')
   await check('Copy Image confirms', copied.includes('Copied menu-renamed 2.png'), copied)
 
@@ -53,10 +49,10 @@ test('right-click menus in the Library', async ({ app }) => {
   const [bx, by] = await app.centre(card('multi-b.png'))
   await app.clickAt(bx, by, 'left', META)
   await app.clickAt(bx, by, 'right')
-  const multi = await menuLabels(app)
+  const multi = await app.menuLabels()
   await check('multi-select menu acts on both', multi.includes('Move 2 Items to') && multi.includes('Move 2 Items to Trash'), multi.join(' · '))
   await check('right-clicking inside the selection keeps it', (await app.js(`document.querySelectorAll('.card.selected').length`)) === 2)
-  await app.js(`${menuItem('Move 2 Items to Trash')}.click()`)
+  await app.pickMenu('Move 2 Items to Trash')
   const gone = (await app.waitForItem('multi-a.png', false)) && (await app.waitForItem('multi-b.png', false))
   await check('Move 2 Items to Trash deletes both', gone)
 
@@ -74,6 +70,6 @@ test('right-click menus in the Library', async ({ app }) => {
 
   // Sidebar folders use the same menu
   await app.rightClick(sidebar('Tiles'))
-  const folderMenu = await menuLabels(app)
+  const folderMenu = await app.menuLabels()
   await check('folder menu: New Folder, Rename, Show in Finder, Trash', ['New Folder Inside…', 'Rename…', 'Show in Finder', 'Move to Trash'].every((l) => folderMenu.includes(l)), folderMenu.join(' · '))
 })

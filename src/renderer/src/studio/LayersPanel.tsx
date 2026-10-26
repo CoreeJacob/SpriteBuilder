@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { ContextMenu, type MenuEntry, type MenuRequest } from '@/app/ContextMenu'
+import { useEffect, useRef, useState } from 'react'
+import { useContextMenu, type MenuEntry } from '@/app/ContextMenu'
 import { Icon } from '@/app/Icon'
 import { NumberInput } from '@/app/NumberInput'
 import { drawPixels } from '@/lib/canvas'
@@ -28,8 +28,7 @@ export function LayersPanel() {
   const [dragging, setDragging] = useState<string | null>(null)
   const [drop, setDrop] = useState<DropTarget | null>(null)
   const [inserting, setInserting] = useState(false)
-  const [menu, setMenu] = useState<MenuRequest | null>(null)
-  const closeMenu = useCallback(() => setMenu(null), [])
+  const menu = useContextMenu()
   const finishOpacity = useRef<(() => void) | null>(null)
   const s = useStudio.getState()
 
@@ -122,7 +121,7 @@ export function LayersPanel() {
             onContextMenu={(e) => {
               e.preventDefault()
               s.setActiveLayer(layer.id)
-              setMenu({ x: e.clientX, y: e.clientY, entries: layerMenu(layer.id) })
+              menu.show(e.clientX, e.clientY, layerMenu(layer.id))
             }}
             // Drag a row up or down to restack it.
             draggable={editing !== layer.id}
@@ -218,7 +217,7 @@ export function LayersPanel() {
         </div>
       )}
       {inserting && <InsertImageDialog onClose={() => setInserting(false)} />}
-      {menu && <ContextMenu menu={menu} onClose={closeMenu} />}
+      {menu.element}
     </section>
   )
 }
