@@ -1159,15 +1159,30 @@ textarea.input {
   letter-spacing: 0;
 }
 .studio-preview {
-  display: grid;
-  place-items: center;
+  display: flex;
   height: 210px;
+  overflow: hidden;
   border-radius: var(--radius);
 }
 .studio-preview canvas {
-  max-width: 100%;
-  max-height: 100%;
+  flex: none;
+  margin: auto; /* centred, and still scrollable from the top-left when bigger than the box */
   image-rendering: pixelated;
+}
+.studio-preview.actual {
+  overflow: auto;
+}
+.preview-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* The big preview: a wider side panel with a much taller preview. */
+.studio-body.big-preview {
+  grid-template-columns: 64px 1fr min(46vw, 640px);
+}
+.big-preview .studio-preview {
+  height: min(62vh, 620px);
 }
 .swatches {
   display: grid;

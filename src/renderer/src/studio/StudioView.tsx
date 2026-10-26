@@ -16,8 +16,8 @@ import { compositeAt, MAX_SIZE } from './model'
 import { PALETTES } from './palettes'
 import { PixelCanvas } from './PixelCanvas'
 import { countColors, rankColors, toHex } from './raster'
-import { fitZoom, useStudio, ZOOM_LEVELS } from './store'
-import { pixelsToCanvas, scaleCanvas } from '@/lib/canvas'
+import { fitZoom, previewZoom, useStudio, ZOOM_LEVELS } from './store'
+import { pixelsToCanvas } from '@/lib/canvas'
 import { isTyping, turnFromKey } from '@/lib/dom'
 
 /** Image files dragged in from Finder land on a new layer, like Insert Image. */
@@ -59,6 +59,7 @@ const isPowerOfTwo = (n: number): boolean => (n & (n - 1)) === 0
 
 export function StudioView() {
   const doc = useStudio((s) => s.doc)
+  const bigPreview = useApp((s) => s.bigPreview)
   const [showNew, setShowNew] = useState(false)
   const [showSheet, setShowSheet] = useState(false)
   const [showSize, setShowSize] = useState(false)
@@ -77,7 +78,7 @@ export function StudioView() {
   return (
     <div className="studio">
       <StudioBar onNew={() => confirmDiscard() && setShowNew(true)} onSheet={() => setShowSheet(true)} onSize={() => setShowSize(true)} />
-      <div className="studio-body">
+      <div className={`studio-body ${bigPreview ? 'big-preview' : ''}`}>
         <ToolBox />
         <div className="canvas-column">
           <CanvasDropZone>
@@ -354,6 +355,11 @@ function SidePanel({ hover }: { hover: [number, number] | null }) {
   const floating = useStudio((s) => s.floating)
   const [tiled, setTiled] = useState(false)
   const previewRef = useRef<HTMLCanvasElement>(null)
+  const boxRef = useRef<HTMLDivElement>(null)
+  const [box, setBox] = useState({ w: 236, h: 210 })
+  const bigPreview = useApp((s) => s.bigPreview)
+  const previewSize = useApp((s) => s.previewSize)
+  const { setBigPreview, setPreviewSize } = useApp.getState()
   const { setPrimary, setSecondary } = useStudio.getState()
 
   const frame = useStudio((s) => s.frame)
@@ -390,36 +396,45 @@ function SidePanel({ hover }: { hover: [number, number] | null }) {
     return rankColors(counts).map(({ color }) => toHex(color))
   }, [doc, settledVersion])
 
-  // Live preview at a whole-number scale that fits the panel.
+  useEffect(() => {
+    const el = boxRef.current
+    if (!el) return
+    const observer = new ResizeObserver(([entry]) => setBox({ w: entry.contentRect.width, h: entry.contentRect.height }))
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  // Live preview, drawn at its real size; the page enlarges it (with hard pixel edges) to fit.
+  const repeat = tiled ? 3 : 1
   useEffect(() => {
     const canvas = previewRef.current
     if (!canvas) return
-    const repeat = tiled ? 3 : 1
-    const scale = Math.max(1, Math.floor(200 / (Math.max(doc.width, doc.height) * repeat)))
-    // Shares the canvas's composite of this frame rather than blending the layers again.
-    const image = scaleCanvas(pixelsToCanvas(compositeAt(doc, shown, version), doc.width, doc.height), scale)
-    canvas.width = image.width * repeat
-    canvas.height = image.height * repeat
+    const { width: w, height: h } = doc
+    canvas.width = w * repeat
+    canvas.height = h * repeat
     const ctx = canvas.getContext('2d')!
-    ctx.imageSmoothingEnabled = false
+    // Shares the canvas's composite of this frame rather than blending the layers again.
+    const image = pixelsToCanvas(compositeAt(doc, shown, version), w, h)
     // Pixels being moved by the select tool aren't on the layer yet; draw them on top.
     const lifted = floating && shown === frame ? pixelsToCanvas(floating.pixels, floating.w, floating.h) : null
     for (let y = 0; y < repeat; y++) {
       for (let x = 0; x < repeat; x++) {
-        const ox = x * image.width
-        const oy = y * image.height
-        ctx.drawImage(image, ox, oy)
+        ctx.drawImage(image, x * w, y * h)
         if (lifted && floating) {
           ctx.save()
           ctx.beginPath()
-          ctx.rect(ox, oy, image.width, image.height)
+          ctx.rect(x * w, y * h, w, h)
           ctx.clip()
-          ctx.drawImage(lifted, ox + floating.x * scale, oy + floating.y * scale, floating.w * scale, floating.h * scale)
+          ctx.drawImage(lifted, x * w + floating.x, y * h + floating.y)
           ctx.restore()
         }
       }
     }
-  }, [doc, version, tiled, floating, shown, frame])
+  }, [doc, version, repeat, floating, shown, frame])
+  // 1× (as it would look in a game) only in the big preview; otherwise as big as fits.
+  const actual = bigPreview && previewSize === 'actual'
+  const zoom = actual ? 1 : previewZoom(doc.width * repeat, doc.height * repeat, box.w - 4, box.h - 4)
+  const zoomLabel = zoom >= 1 ? `${zoom}×` : `${Math.round(zoom * 100)}%`
 
   const sizeHint = !isPowerOfTwo(doc.width) || !isPowerOfTwo(doc.height)
 
@@ -437,12 +452,31 @@ function SidePanel({ hover }: { hover: [number, number] | null }) {
               </span>
             )}
           </span>
-          <label className="check small">
-            <input type="checkbox" checked={tiled} onChange={(e) => setTiled(e.target.checked)} /> Tiled 3×3
-          </label>
+          <div className="preview-actions">
+            {bigPreview && (
+              <div className="filter-options">
+                <button className={`chip ${!actual ? 'on' : ''}`} onClick={() => setPreviewSize('fit')} title="As big as fits">
+                  Fit
+                </button>
+                <button className={`chip ${actual ? 'on' : ''}`} onClick={() => setPreviewSize('actual')} title="Actual size, as it would look in a game">
+                  1×
+                </button>
+              </div>
+            )}
+            <label className="check small">
+              <input type="checkbox" checked={tiled} onChange={(e) => setTiled(e.target.checked)} /> Tiled 3×3
+            </label>
+            <button
+              className={`icon-btn ${bigPreview ? 'on' : ''}`}
+              onClick={() => setBigPreview(!bigPreview)}
+              title={bigPreview ? 'Smaller preview' : 'Bigger preview, to see the whole sprite'}
+            >
+              <Icon name={bigPreview ? 'collapse' : 'expand'} size={14} />
+            </button>
+          </div>
         </div>
-        <div className="studio-preview checker">
-          <canvas ref={previewRef} />
+        <div className={`studio-preview checker ${actual ? 'actual' : ''}`} ref={boxRef}>
+          <canvas ref={previewRef} style={{ width: doc.width * repeat * zoom, height: doc.height * repeat * zoom }} title={`Preview at ${zoomLabel}`} />
         </div>
       </section>
 

@@ -41,6 +41,9 @@ interface AppState {
   sort: SortOrder
   layout: LayoutMode
   thumbSize: number
+  /** Pixel Studio's preview: shown big (a wider side panel), and at fit or actual size. */
+  bigPreview: boolean
+  previewSize: PreviewSize
   selection: string[]
   /** Anchor for shift-click range selection. */
   selectionAnchor: string | null
@@ -63,6 +66,8 @@ interface AppState {
   setSort(sort: SortOrder): void
   setLayout(layout: LayoutMode): void
   setThumbSize(size: number): void
+  setBigPreview(big: boolean): void
+  setPreviewSize(size: PreviewSize): void
   select(paths: string[], anchor?: string | null): void
 
   notify(message: string, kind?: Toast['kind']): void
@@ -82,10 +87,15 @@ export const selectFolders = (s: { library: LibrarySnapshot | null }): string[] 
 
 const PREFS_KEY = 'spritebuilder.prefs'
 
+/** 'fit' fills the preview box (whole-number zoom when enlarging); 'actual' is 1×, as in a game. */
+export type PreviewSize = 'fit' | 'actual'
+
 interface Prefs {
   theme: Theme
   layout: LayoutMode
   thumbSize: number
+  bigPreview: boolean
+  previewSize: PreviewSize
   sort: SortOrder
   includeSubfolders: boolean
 }
@@ -103,6 +113,8 @@ function savePrefs(state: AppState): void {
     theme: state.theme,
     layout: state.layout,
     thumbSize: state.thumbSize,
+    bigPreview: state.bigPreview,
+    previewSize: state.previewSize,
     sort: state.sort,
     includeSubfolders: state.includeSubfolders
   }
@@ -132,6 +144,8 @@ export const useApp = create<AppState>((set, get) => ({
   sort: prefs.sort ?? { key: 'addedAt', dir: 'desc' },
   layout: prefs.layout ?? 'grid',
   thumbSize: prefs.thumbSize ?? 128,
+  bigPreview: prefs.bigPreview ?? false,
+  previewSize: prefs.previewSize ?? 'fit',
   selection: [],
   selectionAnchor: null,
 
@@ -176,6 +190,14 @@ export const useApp = create<AppState>((set, get) => ({
   },
   setThumbSize: (thumbSize) => {
     set({ thumbSize })
+    savePrefs(get())
+  },
+  setBigPreview: (bigPreview) => {
+    set({ bigPreview })
+    savePrefs(get())
+  },
+  setPreviewSize: (previewSize) => {
+    set({ previewSize })
     savePrefs(get())
   },
   select: (selection, anchor) =>

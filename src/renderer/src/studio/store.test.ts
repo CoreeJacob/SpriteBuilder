@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { serializeDoc } from './model'
-import { undoMemory, useStudio } from './store'
+import { previewZoom, undoMemory, useStudio } from './store'
 
 describe('studio frame actions', () => {
   beforeEach(() => useStudio.getState().newDoc(2, 2))
@@ -262,5 +262,14 @@ describe('resizing lifted pixels', () => {
     expect(state().floating).toMatchObject({ w: 2, h: 4 })
     state().scaleFloating({ ...state().selection!, w: 1, h: 2 }) // back to the original size, turned
     expect(reds()).toEqual([255, 0])
+  })
+})
+
+describe('previewZoom', () => {
+  it('enlarges by whole numbers to fill the box, and shrinks by fractions only when it must', () => {
+    expect(previewZoom(16, 16, 236, 202)).toBe(12)
+    expect(previewZoom(128, 128, 580, 600)).toBe(4)
+    expect(previewZoom(512, 512, 580, 600)).toBe(1)
+    expect(previewZoom(512, 512, 228, 202)).toBeCloseTo(202 / 512)
   })
 })

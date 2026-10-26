@@ -60,6 +60,8 @@ const PATHS = {
   flipV: 'M3 12h18M7 4h10l-5 5zM7 20h10l-5-5z',
   rotateCW: 'M19.5 12a7.5 7.5 0 1 1-2.2-5.3M20 4v5h-5',
   rotateCCW: 'M4.5 12a7.5 7.5 0 1 0 2.2-5.3M4 4v5h5',
+  expand: 'M14 4h6v6M20 4l-7 7M10 20H4v-6M4 20l7-7',
+  collapse: 'M4 14h6v6M10 14l-7 7M20 10h-6V4M14 10l7-7',
   image: 'M4 5h16v14H4zM4 16l5-5 4 4 2-2 5 5M15.5 9.5h.01',
   onion: 'M9 6a6 6 0 1 0 0 12M15 6a6 6 0 1 1 0 12M12 7.5a6 6 0 0 1 0 9'
 } as const

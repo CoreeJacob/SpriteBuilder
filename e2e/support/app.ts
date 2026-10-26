@@ -90,6 +90,15 @@ export class App {
     this.cdp = fresh.cdp
   }
 
+  /** Quits the app normally (so it saves everything) and starts it again on the same library. */
+  async relaunch(): Promise<void> {
+    await this.close()
+    const fresh = await App.launch(this.dirs)
+    this.electron = fresh.electron
+    this.page = fresh.page
+    this.cdp = fresh.cdp
+  }
+
   async close(): Promise<void> {
     if (this.electron.process().exitCode !== null || this.electron.process().signalCode !== null) return
     // Skip the "unsaved changes" question on the way out.
