@@ -67,7 +67,7 @@ export function linePoints(x0: number, y0: number, x1: number, y1: number): Arra
 
 /**
  * Fills the area of same-coloured pixels touching (x, y) (4-way, like classic paint
- * buckets). Returns how many pixels changed.
+ * buckets). `allowed` can keep it within a selection. Returns how many pixels changed.
  */
 export function floodFill(
   buf: Uint8ClampedArray,
@@ -75,7 +75,8 @@ export function floodFill(
   height: number,
   x: number,
   y: number,
-  color: RGBA
+  color: RGBA,
+  allowed: (p: number) => boolean = () => true
 ): number {
   if (x < 0 || y < 0 || x >= width || y >= height) return 0
   const target = getPixel(buf, width, x, y)
@@ -85,7 +86,7 @@ export function floodFill(
       ? buf[i + 3] === 0
       : buf[i] === target[0] && buf[i + 1] === target[1] && buf[i + 2] === target[2] && buf[i + 3] === target[3]
   if (target.every((v, k) => v === color[k]) || (target[3] === 0 && color[3] === 0)) return 0
-  const region = floodRegion(width, height, [x, y], (p) => same(p * 4))
+  const region = floodRegion(width, height, [x, y], (p) => same(p * 4) && allowed(p))
   for (const p of region) buf.set(color, p * 4)
   return region.length
 }
@@ -273,6 +274,19 @@ export function inRegion(region: Region | null, x: number, y: number): boolean {
   return !region || (x >= region.x && y >= region.y && x < region.x + region.w && y < region.y + region.h)
 }
 
+/** A selection: a box, plus (for free shapes like a lasso) which pixels inside it are selected. */
+export interface Selection extends Region {
+  /** One value per pixel of the box, row by row: 1 selected, 0 not. No mask means the whole box. */
+  mask?: Uint8Array
+}
+
+/** Whether a pixel is selected. With no selection at all, everything is. */
+export function isSelected(sel: Selection | null, x: number, y: number): boolean {
+  if (!sel) return true
+  if (x < sel.x || y < sel.y || x >= sel.x + sel.w || y >= sel.y + sel.h) return false
+  return !sel.mask || sel.mask[(y - sel.y) * sel.w + (x - sel.x)] === 1
+}
+
 /** Copies a rectangle of pixels out into its own buffer. Parts outside the canvas come back transparent. */
 export function extractRegion(buf: Uint8ClampedArray, width: number, height: number, r: Region): Uint8ClampedArray<ArrayBuffer> {
   const out = new Uint8ClampedArray(r.w * r.h * 4)
@@ -320,6 +334,7 @@ export function blitRegion(
 }
 
 /** Flood fill that can't leak outside `region`. */
+/** The paint bucket, kept inside the selection (any shape) when there is one. */
 export function floodFillInRegion(
   buf: Uint8ClampedArray,
   width: number,
@@ -327,14 +342,10 @@ export function floodFillInRegion(
   x: number,
   y: number,
   color: RGBA,
-  region: Region | null
+  selection: Selection | null
 ): number {
-  if (!region) return floodFill(buf, width, height, x, y, color)
-  if (!inRegion(region, x, y)) return 0
-  const local = extractRegion(buf, width, height, region)
-  const changed = floodFill(local, region.w, region.h, x - region.x, y - region.y, color)
-  if (changed) blitRegion(buf, width, height, local, region, true)
-  return changed
+  if (!isSelected(selection, x, y)) return 0
+  return floodFill(buf, width, height, x, y, color, (p) => isSelected(selection, p % width, Math.floor(p / width)))
 }
 
 /** Alpha-blends `src` over `dst` (same size), scaling the source alpha by `opacity`. */

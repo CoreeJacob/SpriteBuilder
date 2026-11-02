@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 import { Dropdown } from '@/app/Dropdown'
 import { Icon, type IconName } from '@/app/Icon'
 import { MAX_BRUSH, type Turn } from './raster'
-import { BRUSH_TOOLS, SHAPE_TOOLS, useStudio, type Rescale, type Tool } from './store'
+import { BRUSH_TOOLS, SELECT_TOOLS, SHAPE_TOOLS, useStudio, type Rescale, type Tool } from './store'
 
 export const TOOLS: Array<{ tool: Tool; icon: IconName; label: string; key: string; groupStart?: boolean }> = [
   { tool: 'pencil', icon: 'pencil', label: 'Pencil', key: 'B' },
@@ -14,7 +14,8 @@ export const TOOLS: Array<{ tool: Tool; icon: IconName; label: string; key: stri
   { tool: 'line', icon: 'line', label: 'Line · ⇧ snaps to 45°', key: 'L', groupStart: true },
   { tool: 'rect', icon: 'rect', label: 'Rectangle · ⇧ for a square', key: 'R' },
   { tool: 'ellipse', icon: 'ellipse', label: 'Ellipse · ⇧ for a circle', key: 'O' },
-  { tool: 'select', icon: 'select', label: 'Select · drag inside to move, ⌥-drag to copy', key: 'M', groupStart: true }
+  { tool: 'select', icon: 'select', label: 'Select · drag inside to move, ⌥-drag to copy', key: 'M', groupStart: true },
+  { tool: 'lasso', icon: 'lasso', label: 'Lasso · draw around what to select; drag inside to move', key: 'Q' }
 ]
 
 /** Flips and quarter turns, with the keys that do them (handled in useStudioShortcuts). */
@@ -40,7 +41,7 @@ export function ToolBox() {
           <button className={`tool ${tool === t.tool ? 'on' : ''}`} onClick={() => setTool(t.tool)} title={`${t.label} (${t.key})`}>
             <Icon name={t.icon} size={20} />
           </button>
-          {t.tool === 'select' && tool === 'select' && <TurnMenu />}
+          {t.tool === 'lasso' && SELECT_TOOLS.includes(tool) && <TurnMenu />}
           {t.tool === 'ellipse' && SHAPE_TOOLS.includes(tool) && (
             <button
               className={`tool small ${fillShapes ? 'on' : ''}`}

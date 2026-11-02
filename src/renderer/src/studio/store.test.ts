@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { serializeDoc } from './model'
+import { selectionFromLoop, turnMask } from './selection'
 import { undoMemory, useStudio } from './store'
 
 describe('studio frame actions', () => {
@@ -99,6 +100,17 @@ describe('undo memory and exactness', () => {
       () => state().resize(pick([4, 6, 8]), pick([3, 5]), pick(['canvas', 'scale'] as const), [0.5, 0.5]),
       () => (state().turn(pick(['flipH', 'flipV', 'rotateCW'] as const)), state().commitFloating(), state().setSelection(null)),
       () => (state().insertImage({ w: 2, h: 2, pixels: new Uint8ClampedArray(16).fill(200) }, 'pic'), state().commitFloating()),
+      // A lasso selection lifted, moved, maybe turned, and put down.
+      () => {
+        const { width, height } = state().doc!
+        const loop: Array<[number, number]> = [[0, 0], [Math.floor(rnd() * width), 0], [0, Math.floor(rnd() * height)]]
+        state().setSelection(selectionFromLoop(loop, width, height))
+        state().liftSelection(rnd() < 0.3)
+        state().moveFloating(1, 1)
+        if (rnd() < 0.5) state().turn('rotateCW')
+        state().commitFloating()
+        state().setSelection(null)
+      },
       () => state().setActiveLayer(pick(state().doc!.layers).id),
       () => state().setFrame(Math.floor(rnd() * state().doc!.frames.length))
     ]
@@ -292,5 +304,54 @@ describe('frame menu actions', () => {
     expect(ids()).toEqual(before)
     state().deleteFrames(0, 4)
     expect(ids()).toHaveLength(1) // there's always one frame left
+  })
+})
+
+describe('free-shape selections in the Studio', () => {
+  const state = () => useStudio.getState()
+  const reds = () => {
+    const cel = state().activeCel()!
+    return Array.from({ length: state().doc!.height }, (_, y) => Array.from({ length: state().doc!.width }, (_, x) => (cel[(y * state().doc!.width + x) * 4 + 3] ? '#' : '.')).join(''))
+  }
+  const fillLayer = () => {
+    const done = state().beginEdit()
+    state().activeCel()!.fill(255)
+    done()
+  }
+
+  it('moves only the pixels inside a lasso, and undo puts them back exactly', () => {
+    state().newDoc(6, 4)
+    fillLayer()
+    const before = reds()
+    state().setSelection(selectionFromLoop([[0, 0], [2, 0], [0, 2]], 6, 4)) // a small triangle in the corner
+    state().liftSelection()
+    state().moveFloating(3, 1)
+    state().commitFloating()
+    expect(reds()).toEqual(['...###', '..####', '.#####', '######'])
+    expect(state().selection?.mask).toBeDefined() // the moved selection keeps its shape
+    state().undo()
+    expect(reds()).toEqual(before)
+  })
+
+  it('copies a shape with clear corners, and deletes only inside it', () => {
+    state().newDoc(4, 4)
+    fillLayer()
+    state().setSelection(selectionFromLoop([[0, 0], [3, 0], [0, 3]], 4, 4))
+    const copied = state().copySelection()!
+    expect(Array.from(copied.pixels.filter((_, i) => i % 4 === 3))).toEqual([255, 255, 255, 255, 255, 255, 255, 0, 255, 255, 0, 0, 255, 0, 0, 0])
+    state().deleteSelection()
+    expect(reds()).toEqual(['....', '...#', '..##', '.###'])
+  })
+
+  it('a turned shape keeps its shape, turned', () => {
+    state().newDoc(6, 6)
+    state().setSelection(selectionFromLoop([[1, 1], [3, 1], [1, 2]], 6, 6)) // a 3×2 box that isn't all selected
+    const before = state().selection!
+    expect(before.mask).toBeDefined()
+    state().turn('rotateCW')
+    const sel = state().selection!
+    expect([sel.w, sel.h]).toEqual([2, 3])
+    expect(Array.from(sel.mask!)).toEqual(Array.from(turnMask(before.mask!, 3, 2, 'rotateCW')))
+    expect(state().floating?.mask).toBe(sel.mask)
   })
 })

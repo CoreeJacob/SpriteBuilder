@@ -127,11 +127,13 @@ export function LibraryView() {
   const scopeTitle =
     scope.kind === 'all' ? 'All Images' : scope.kind === 'favorites' ? 'Favourites' : scope.path ? basenameRel(scope.path) : 'Library'
   const totalSize = items.reduce((sum, i) => sum + i.size, 0)
+  const showsOneItem = selection.length === 1 && library.items.some((i) => i.path === selection[0])
   const hiddenByFilters = countActiveFilters(filters) > 0 || filters.search.trim() !== ''
   const hiddenCount = library.items.filter((i) => inScope(i, scope, includeSubfolders)).length - items.length
 
   return (
-    <div className={`library ${bigLibraryPreview ? 'big-preview' : ''}`}>
+    // Only one image's details have the preview (and its shrink button), so the panel widens only then.
+    <div className={`library ${bigLibraryPreview && showsOneItem ? 'big-preview' : ''}`}>
       <FolderSidebar />
       <section className="lib-main">
         <header className="lib-header">

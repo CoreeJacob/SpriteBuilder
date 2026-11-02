@@ -32,7 +32,8 @@ const GROUPS: Array<{ title: string; keys: Array<[string, string]> }> = [
       ['L / R / O', 'Line / Rectangle / Ellipse'],
       ['F', 'Filled or outline shapes'],
       ['[ / ]', 'Smaller / bigger brush'],
-      ['M', 'Select'],
+      ['M', 'Select (rectangle)'],
+      ['Q', 'Lasso: draw around what to select'],
       ['X', 'Swap front and back colours'],
       ['⇧ while drawing', 'Straight lines, squares, circles']
     ]

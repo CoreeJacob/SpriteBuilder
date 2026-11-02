@@ -7,8 +7,8 @@ import {
   constrainEnd,
   floodFillInRegion,
   getPixel,
-  inRegion,
   isCorner,
+  isSelected,
   type Region,
   linePoints,
   mirrorPoints,
@@ -20,7 +20,8 @@ import {
   TRANSPARENT,
   type RGBA
 } from './raster'
-import { BRUSH_TOOLS, useStudio, ZOOM_LEVELS, type Tool } from './store'
+import { maskOutline, outlineSegments, selectionFromLoop } from './selection'
+import { BRUSH_TOOLS, SELECT_TOOLS, useStudio, ZOOM_LEVELS, type Tool } from './store'
 
 type Cell = [number, number]
 
@@ -36,6 +37,7 @@ type Drag =
     }
   | { kind: 'shape'; done: () => void; tool: 'line' | 'rect' | 'ellipse'; start: Cell; base: Uint8ClampedArray; color: RGBA }
   | { kind: 'select'; anchor: Cell; moved: boolean }
+  | { kind: 'lasso'; points: Cell[] }
   | { kind: 'move'; startCell: Cell; origin: Cell }
   | { kind: 'scale'; handle: Handle; origin: Region }
 
@@ -76,6 +78,8 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
   const [hover, setHover] = useState<Cell | null>(null)
   const [altDown, setAltDown] = useState(false)
   const [hoverHandle, setHoverHandle] = useState<Handle | null>(null)
+  /** The loop being drawn with the lasso, until the button comes up. */
+  const [lassoPath, setLassoPath] = useState<Cell[] | null>(null)
 
   const repeat = tileMode ? 3 : 1
 
@@ -200,22 +204,32 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
     }
     ctx.restore()
 
-    if (selection) {
-      // "Marching ants": a white dash with black in the gaps reads on any colour.
-      const x = ox + selection.x * zoom + 0.5
-      const y = oy + selection.y * zoom + 0.5
-      const w = selection.w * zoom - 1
-      const h = selection.h * zoom - 1
+    /** Strokes a path as "marching ants": a white dash with black in the gaps reads on any colour. */
+    const ants = (path: Path2D): void => {
       ctx.save()
       ctx.lineWidth = 1
       ctx.setLineDash([4, 4])
       ctx.strokeStyle = '#000'
-      ctx.strokeRect(x, y, w, h)
+      ctx.stroke(path)
       ctx.lineDashOffset = 4
       ctx.strokeStyle = '#fff'
-      ctx.strokeRect(x, y, w, h)
+      ctx.stroke(path)
       ctx.restore()
-      if (tool === 'select') {
+    }
+    if (selection) {
+      const path = new Path2D()
+      if (selection.mask) {
+        // A free shape: trace its edge.
+        const seg = maskOutline({ ...selection, mask: selection.mask })
+        for (let i = 0; i < seg.length; i += 4) {
+          path.moveTo(ox + (selection.x + seg[i]) * zoom + 0.5, oy + (selection.y + seg[i + 1]) * zoom + 0.5)
+          path.lineTo(ox + (selection.x + seg[i + 2]) * zoom + 0.5, oy + (selection.y + seg[i + 3]) * zoom + 0.5)
+        }
+      } else {
+        path.rect(ox + selection.x * zoom + 0.5, oy + selection.y * zoom + 0.5, selection.w * zoom - 1, selection.h * zoom - 1)
+      }
+      ants(path)
+      if (SELECT_TOOLS.includes(tool)) {
         // Resize handles on the corners and edges.
         ctx.fillStyle = '#fff'
         ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)'
@@ -229,19 +243,22 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
       }
     }
 
-    if (hover && tool !== 'select') {
+    if (lassoPath && lassoPath.length > 1) {
+      // The loop so far, through pixel centres, closed back to where it started.
+      const path = new Path2D()
+      lassoPath.forEach(([x, y], i) => (i ? path.lineTo : path.moveTo).call(path, ox + (x + 0.5) * zoom, oy + (y + 0.5) * zoom))
+      path.closePath()
+      ants(path)
+    }
+
+    if (hover && !SELECT_TOOLS.includes(tool)) {
       // Outline exactly the pixels the brush would paint.
       const brush = BRUSH_TOOLS.includes(tool) && !altDown
       const cells = brush ? brushPoints([hover], brushSize, brushShape) : [hover]
       const covered = new Set(cells.map(([x, y]) => `${x},${y}`))
+      const seg = outlineSegments(cells, (x, y) => covered.has(`${x},${y}`))
       const edges = new Path2D()
-      for (const [x, y] of cells) {
-        const [l, t, r, b] = [x * zoom, y * zoom, (x + 1) * zoom, (y + 1) * zoom]
-        if (!covered.has(`${x},${y - 1}`)) (edges.moveTo(l, t), edges.lineTo(r, t))
-        if (!covered.has(`${x},${y + 1}`)) (edges.moveTo(l, b), edges.lineTo(r, b))
-        if (!covered.has(`${x - 1},${y}`)) (edges.moveTo(l, t), edges.lineTo(l, b))
-        if (!covered.has(`${x + 1},${y}`)) (edges.moveTo(r, t), edges.lineTo(r, b))
-      }
+      for (let i = 0; i < seg.length; i += 4) (edges.moveTo(seg[i] * zoom, seg[i + 1] * zoom), edges.lineTo(seg[i + 2] * zoom, seg[i + 3] * zoom))
       ctx.lineWidth = 3
       ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)'
       ctx.stroke(edges)
@@ -249,7 +266,7 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)'
       ctx.stroke(edges)
     }
-  }, [doc, version, zoom, showGrid, tileMode, repeat, hover, selection, floating, mirrorX, mirrorY, tool, frame, onionSkin, resolvedTheme, settledVersion, brushSize, brushShape, altDown])
+  }, [doc, version, zoom, showGrid, tileMode, repeat, hover, selection, floating, mirrorX, mirrorY, tool, frame, onionSkin, resolvedTheme, settledVersion, brushSize, brushShape, altDown, lassoPath])
 
   if (!doc) return null
   const W = doc.width
@@ -267,7 +284,7 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
   /** The resize handle under the pointer, if the select tool is showing handles. */
   const handleAt = (e: PointerEvent): Handle | null => {
     const box = useStudio.getState().selection
-    if (tool !== 'select' || !box) return null
+    if (!SELECT_TOOLS.includes(tool) || !box) return null
     const rect = canvasRef.current!.getBoundingClientRect()
     const [ox, oy] = tileMode ? [W * zoom, H * zoom] : [0, 0]
     return (
@@ -311,7 +328,7 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
     const s = useStudio.getState()
     const clip = s.floating ? null : s.selection
     const stamped = (brushed ? brushPoints(points, s.brushSize, s.brushShape) : points).map(wrap)
-    return mirrorPoints(stamped, W, H, s.mirrorX, s.mirrorY).filter(([x, y]) => inRegion(clip, x, y))
+    return mirrorPoints(stamped, W, H, s.mirrorX, s.mirrorY).filter(([x, y]) => isSelected(clip, x, y))
   }
 
   /** Paints the brush at each point; `brushed: false` for pixels that already include the brush (shapes). */
@@ -351,7 +368,7 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
     const current = effectiveTool(e)
     const outside = x < 0 || y < 0 || x >= W || y >= H
 
-    if (current === 'select') {
+    if (current === 'select' || current === 'lasso') {
       e.currentTarget.setPointerCapture(e.pointerId)
       const handle = handleAt(e)
       if (handle) {
@@ -361,11 +378,16 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
         return
       }
       const [sx, sy] = unoffset(cell)
-      if (s.floating && inRegion(s.floating, sx, sy)) {
+      // Pressing inside the selection's shape picks it up to move it (⌥ leaves a copy behind).
+      if (s.floating && isSelected(s.floating, sx, sy)) {
         drag.current = { kind: 'move', startCell: cell, origin: [s.floating.x, s.floating.y] }
-      } else if (s.selection && inRegion(s.selection, sx, sy)) {
+      } else if (s.selection && isSelected(s.selection, sx, sy)) {
         s.liftSelection(e.altKey)
         drag.current = { kind: 'move', startCell: cell, origin: [s.selection.x, s.selection.y] }
+      } else if (current === 'lasso') {
+        s.setSelection(null)
+        drag.current = { kind: 'lasso', points: [[sx, sy]] }
+        setLassoPath([[sx, sy]])
       } else {
         s.setSelection(null)
         drag.current = { kind: 'select', anchor: clampCell([sx, sy]), moved: false }
@@ -460,6 +482,13 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
     } else if (d.kind === 'shape') {
       s.activeCel()?.set(d.base)
       drawShape(d, cell, e.shiftKey)
+    } else if (d.kind === 'lasso') {
+      // Join the dots, so a fast drag still makes a continuous loop.
+      const [px, py] = unoffset(cell)
+      const last = d.points[d.points.length - 1]
+      if (px === last[0] && py === last[1]) return
+      d.points.push(...linePoints(last[0], last[1], px, py).slice(1))
+      setLassoPath([...d.points])
     } else if (d.kind === 'select') {
       const [l, t, r, b] = normalizeRect(...d.anchor, ...clampCell(unoffset(cell)))
       d.moved = true
@@ -480,6 +509,10 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
       d.done()
     } else if (d.kind === 'select' && !d.moved) {
       useStudio.getState().setSelection(null) // a plain click clears the selection
+    } else if (d.kind === 'lasso') {
+      setLassoPath(null)
+      // A plain click (no loop drawn) clears the selection.
+      useStudio.getState().setSelection(d.points.length > 1 ? selectionFromLoop(d.points, W, H) : null)
     }
   }
 
@@ -494,10 +527,10 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
   const hoverInSelection = (() => {
     if (!hover) return false
     const [hx, hy] = unoffset(hover)
-    return inRegion(floating ?? selection, hx, hy) && (floating ?? selection) !== null
+    return (floating ?? selection) !== null && isSelected(floating ?? selection, hx, hy)
   })()
   const cursorTool = altDown && PICKS_WITH_ALT.includes(tool) ? 'eyedropper' : tool
-  const cursorClass = tool === 'select' && hoverInSelection ? 'tool-move' : `tool-${cursorTool}`
+  const cursorClass = SELECT_TOOLS.includes(tool) && hoverInSelection ? 'tool-move' : `tool-${cursorTool}`
 
   return (
     <canvas

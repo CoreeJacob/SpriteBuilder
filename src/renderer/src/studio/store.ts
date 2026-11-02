@@ -25,7 +25,6 @@ import type { Palette } from './palettes'
 import {
   blitRegion,
   changedRegion,
-  clearRegion,
   extractRegion,
   fitToCanvas,
   MAX_BRUSH,
@@ -33,10 +32,15 @@ import {
   turnPixels,
   type BrushShape,
   type Region,
+  type Selection,
   type Turn
 } from './raster'
+import { clearSelected, liftSelected, resizeMask, turnMask } from './selection'
 
-export type Tool = 'pencil' | 'eraser' | 'fill' | 'eyedropper' | 'line' | 'rect' | 'ellipse' | 'select'
+export type Tool = 'pencil' | 'eraser' | 'fill' | 'eyedropper' | 'line' | 'rect' | 'ellipse' | 'select' | 'lasso'
+
+/** Tools that make selections; switching between them keeps lifted pixels in hand. */
+export const SELECT_TOOLS: Tool[] = ['select', 'lasso']
 
 export const SHAPE_TOOLS: Tool[] = ['line', 'rect', 'ellipse']
 
@@ -69,21 +73,24 @@ type HistoryEntry =
     }
 
 /** Pixels lifted off the layer by the select tool, waiting to be dropped somewhere. */
-interface Floating extends Region {
+interface Floating extends Selection {
   pixels: Uint8ClampedArray
-  /** The pixels as first lifted (turned with them): resizing always starts from these, so nothing blurs or is lost. */
-  original: { w: number; h: number; pixels: Uint8ClampedArray }
+  /** The pixels (and shape) as first lifted, turned with them: resizing always starts from these, so nothing blurs or is lost. */
+  original: { w: number; h: number; pixels: Uint8ClampedArray; mask?: Uint8Array }
   /** Finishes the undo step that began when the pixels were lifted or pasted. */
   done: () => void
 }
 
-/** Lifted pixels at `region`, remembering them as the original for later resizing. */
-const lifted = (region: Region, pixels: Uint8ClampedArray, done: () => void): Floating => ({
+/** Lifted pixels at `region` (with its shape, if it has one), remembered as the original for later resizing. */
+const lifted = (region: Selection, pixels: Uint8ClampedArray, done: () => void): Floating => ({
   ...region,
   pixels,
-  original: { w: region.w, h: region.h, pixels },
+  original: { w: region.w, h: region.h, pixels, mask: region.mask },
   done
 })
+
+/** The selection that matches lifted pixels: their box and shape. */
+const shapeOf = (f: Selection): Selection => ({ x: f.x, y: f.y, w: f.w, h: f.h, mask: f.mask })
 
 /** Quick sizes for the selection, from the Select tool's menu. */
 export type Rescale = 'double' | 'half' | 'fit'
@@ -122,7 +129,7 @@ interface StudioState extends DocLocation {
   pixelPerfect: boolean
   mirrorX: boolean
   mirrorY: boolean
-  selection: Region | null
+  selection: Selection | null
   floating: Floating | null
   clipboard: ClipboardImage | null
   zoom: number
@@ -161,7 +168,7 @@ interface StudioState extends DocLocation {
   toggleMirrorX(): void
   toggleMirrorY(): void
 
-  setSelection(region: Region | null): void
+  setSelection(selection: Selection | null): void
   selectAll(): void
   deselect(): void
   /** Lifts the selected pixels so they can be moved. With `keepOriginal` the move leaves a copy behind. */
@@ -264,6 +271,9 @@ export const useStudio = create<StudioState>((set, get) => {
     })
     set({ layerId: nextLayer, frame: nextFrame, canUndo: true, canRedo: false, dirty: true, version: get().version + 1 })
   }
+  /** The selection tool to switch to for moving lifted pixels: the current one if it is one. */
+  const selectingTool = (): Tool => (SELECT_TOOLS.includes(get().tool) ? get().tool : 'select')
+
   /** Lifts the selection (or, with nothing selected, the whole layer) ready to turn or resize. */
   const liftForTransform = (): Floating | null => {
     const doc = get().doc
@@ -430,7 +440,7 @@ export const useStudio = create<StudioState>((set, get) => {
     },
 
     setTool: (tool) => {
-      if (tool !== 'select') get().commitFloating()
+      if (!SELECT_TOOLS.includes(tool)) get().commitFloating()
       set({ tool })
     },
     setPrimary: (primary) => set({ primary }),
@@ -476,7 +486,7 @@ export const useStudio = create<StudioState>((set, get) => {
       const doc = get().doc
       if (!doc) return
       get().setSelection({ x: 0, y: 0, w: doc.width, h: doc.height })
-      set({ tool: 'select' })
+      set({ tool: selectingTool() })
     },
 
     deselect: () => get().setSelection(null),
@@ -486,8 +496,9 @@ export const useStudio = create<StudioState>((set, get) => {
       const cel = get().activeCel()
       if (!doc || !cel || !selection || floating) return
       const done = get().beginEdit()
-      const pixels = extractRegion(cel, doc.width, doc.height, selection)
-      if (!keepOriginal) clearRegion(cel, doc.width, doc.height, selection)
+      // Only the selected shape comes up; the rest of its box is clear.
+      const pixels = liftSelected(cel, doc.width, doc.height, selection)
+      if (!keepOriginal) clearSelected(cel, doc.width, doc.height, selection)
       set({ floating: lifted(selection, pixels, done), version: get().version + 1 })
     },
 
@@ -496,7 +507,7 @@ export const useStudio = create<StudioState>((set, get) => {
       if (!floating) return
       set({
         floating: { ...floating, x, y },
-        selection: { x, y, w: floating.w, h: floating.h },
+        selection: shapeOf({ ...floating, x, y }),
         version: get().version + 1
       })
     },
@@ -523,7 +534,7 @@ export const useStudio = create<StudioState>((set, get) => {
       const cel = get().activeCel()
       if (!doc || !cel || !selection) return
       const done = get().beginEdit()
-      clearRegion(cel, doc.width, doc.height, selection)
+      clearSelected(cel, doc.width, doc.height, selection)
       done()
       get().touch()
     },
@@ -532,9 +543,9 @@ export const useStudio = create<StudioState>((set, get) => {
       const { doc, selection, floating } = get()
       const cel = get().activeCel()
       if (!doc || !cel || !selection) return null
-      const clipboard: ClipboardImage = floating
-        ? { ...selection, pixels: floating.pixels.slice() }
-        : { ...selection, pixels: extractRegion(cel, doc.width, doc.height, selection) }
+      // Pixels outside a free shape go to the clipboard clear, so pasting keeps the shape.
+      const { x, y, w, h } = selection
+      const clipboard: ClipboardImage = { x, y, w, h, pixels: floating ? floating.pixels.slice() : liftSelected(cel, doc.width, doc.height, selection) }
       set({ clipboard })
       return clipboard
     },
@@ -555,7 +566,7 @@ export const useStudio = create<StudioState>((set, get) => {
       const y = fits ? image.y : 0
       const done = get().beginEdit()
       set({
-        tool: 'select',
+        tool: selectingTool(),
         floating: lifted({ x, y, w: image.w, h: image.h }, image.pixels.slice(), done),
         selection: { x, y, w: image.w, h: image.h },
         version: get().version + 1
@@ -568,17 +579,18 @@ export const useStudio = create<StudioState>((set, get) => {
       const f = liftForTransform()
       if (!doc || !f) return
       const t = turnPixels(f.pixels, f.w, f.h, kind)
-      const o = turnPixels(f.original.pixels, f.original.w, f.original.h, kind)
-      // Turn about the selection's centre; a 90° turn swaps its width and height.
-      const region = { x: f.x + Math.floor((f.w - t.w) / 2), y: f.y + Math.floor((f.h - t.h) / 2), w: t.w, h: t.h }
-      set({ floating: { ...f, ...region, pixels: t.pixels, original: o }, selection: region, version: get().version + 1 })
+      const { original: was } = f
+      const o = { ...turnPixels(was.pixels, was.w, was.h, kind), mask: was.mask && turnMask(was.mask, was.w, was.h, kind) }
+      // Turn about the selection's centre; a 90° turn swaps its width and height. The shape turns too.
+      const region = { x: f.x + Math.floor((f.w - t.w) / 2), y: f.y + Math.floor((f.h - t.h) / 2), w: t.w, h: t.h, mask: f.mask && turnMask(f.mask, f.w, f.h, kind) }
+      set({ floating: { ...f, ...region, pixels: t.pixels, original: o }, selection: shapeOf(region), version: get().version + 1 })
       if (whole && t.w === doc.width && t.h === doc.height) {
         // The layer still fits the canvas exactly, so put it straight back down.
         get().commitFloating()
         set({ selection: null })
       } else {
         // Leave it lifted, ready to drag into place.
-        set({ tool: 'select' })
+        set({ tool: selectingTool() })
       }
     },
 
@@ -589,9 +601,11 @@ export const useStudio = create<StudioState>((set, get) => {
       const h = Math.max(1, Math.round(region.h))
       if (w === f.w && h === f.h && region.x === f.x && region.y === f.y) return
       const { original: o } = f
-      const pixels = w === o.w && h === o.h ? o.pixels.slice() : resizePixels(o.pixels, o.w, o.h, w, h)
-      const next = { x: Math.round(region.x), y: Math.round(region.y), w, h }
-      set({ floating: { ...f, ...next, pixels }, selection: next, version: get().version + 1 })
+      const same = w === o.w && h === o.h
+      const pixels = same ? o.pixels.slice() : resizePixels(o.pixels, o.w, o.h, w, h)
+      const mask = o.mask && (same ? o.mask : resizeMask(o.mask, o.w, o.h, w, h))
+      const next = { x: Math.round(region.x), y: Math.round(region.y), w, h, mask }
+      set({ floating: { ...f, ...next, pixels }, selection: shapeOf(next), version: get().version + 1 })
     },
 
     rescale: (how) => {
@@ -605,7 +619,7 @@ export const useStudio = create<StudioState>((set, get) => {
       // Grow or shrink about the middle; "fit" centres it on the canvas.
       const [cx, cy] = how === 'fit' ? [doc.width / 2, doc.height / 2] : [f.x + f.w / 2, f.y + f.h / 2]
       get().scaleFloating({ x: Math.round(cx - w / 2), y: Math.round(cy - h / 2), w, h })
-      set({ tool: 'select' })
+      set({ tool: selectingTool() })
     },
 
     insertImage: (image, name) => {
@@ -623,7 +637,7 @@ export const useStudio = create<StudioState>((set, get) => {
       }
       set({
         layerId: id,
-        tool: 'select',
+        tool: selectingTool(),
         floating: lifted(region, image.pixels.slice(), done),
         selection: region,
         dirty: true,

@@ -1,4 +1,4 @@
-import { byTip, check, test, type App } from './support/app'
+import { byTip, check, sidebar, test, type App } from './support/app'
 
 /** The preview canvas's size on screen, and the side panel's width. */
 const sizes = (app: App) =>
@@ -76,6 +76,14 @@ test('the Library preview grows too, separately from the Studio’s', async ({ a
   await app.showAll('walk-sheet.png')
   await pickCard('walk-sheet.png')
   await check('the big Library preview is remembered next time', (await shown()).panel === big.panel, await shown())
+  await app.js(`${sidebar('Tiles')}.click()`)
+  await app.untilJs(`!!document.querySelector('.detail.empty')`)
+  await app.settle()
+  const empty = await app.js<number>(`Math.round(document.querySelector('.detail').getBoundingClientRect().width)`)
+  await check('with no image chosen (so no shrink button), the panel goes back to normal width', empty < big.panel - 200, { empty, big: big.panel })
+  await app.showAll('walk-sheet.png')
+  await pickCard('walk-sheet.png')
+  await check('…and choosing an image brings the big preview back', (await shown()).panel === big.panel, await shown())
   await expand()
   await check('…and the shrink button puts it back', (await shown()).panel === small.panel, await shown())
 })
