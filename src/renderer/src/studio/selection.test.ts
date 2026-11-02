@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { floodFillInRegion, isSelected, type Selection } from './raster'
-import { clearSelected, liftSelected, maskOutline, resizeMask, selectionFromLoop, turnMask } from './selection'
+import { clearSelected, combineSelections, liftSelected, maskOutline, resizeMask, selectionFromColor, selectionFromLoop, turnMask } from './selection'
 
 /** The selection drawn as rows of '#' (selected) and '.' over a w×h canvas. */
 function picture(sel: Selection | null, w: number, h: number): string[] {
@@ -33,6 +33,71 @@ describe('selectionFromLoop (lasso)', () => {
     const twice: Array<[number, number]> = [[1, 1], [6, 1], [6, 6], [1, 6], [1, 1], [6, 1], [6, 6], [1, 6]]
     const rows = picture(selectionFromLoop(twice, 8, 8), 8, 8)
     expect(rows[3]).toBe('.#....#.') // only the line itself
+  })
+})
+
+/** A canvas from rows of letters: '.' is clear, and each letter is its own colour. */
+function canvas(rows: string[]): Uint8ClampedArray {
+  const colours: Record<string, number[]> = { r: [200, 0, 0, 255], s: [210, 10, 0, 255], b: [0, 0, 200, 255], '.': [0, 0, 0, 0], ',': [90, 90, 90, 0] }
+  return Uint8ClampedArray.from(rows.flatMap((row) => [...row].flatMap((c) => colours[c])))
+}
+
+describe('selectionFromColor (magic wand)', () => {
+  const art = canvas(['rr.b', 'r..b', 'rsbb', 'b..r'])
+
+  it('picks the exact colour, only where it touches the clicked pixel (not diagonally)', () => {
+    expect(picture(selectionFromColor(art, 4, 4, 0, 0, 0), 4, 4)).toEqual(['##..', '#...', '#...', '....'])
+  })
+
+  it('tolerance lets similar shades in too', () => {
+    // s is within 10 of r on every channel
+    expect(picture(selectionFromColor(art, 4, 4, 0, 0, 10), 4, 4)).toEqual(['##..', '#...', '##..', '....'])
+    expect(picture(selectionFromColor(art, 4, 4, 0, 0, 9), 4, 4)).toEqual(['##..', '#...', '#...', '....'])
+  })
+
+  it('all clear pixels count as one colour, whatever is hidden in them', () => {
+    const mixed = canvas(['.,b', ',.b'])
+    expect(picture(selectionFromColor(mixed, 3, 2, 0, 0, 0), 3, 2)).toEqual(['##.', '##.'])
+  })
+
+  it('a click off the canvas picks nothing', () => {
+    expect(selectionFromColor(art, 4, 4, 4, 0, 0)).toBeNull()
+  })
+})
+
+describe('combineSelections (⇧ adds, ⌥ takes away)', () => {
+  const box = (x: number, y: number, w: number, h: number): Selection => ({ x, y, w, h })
+
+  it('replace ignores what was there', () => {
+    expect(combineSelections(box(0, 0, 2, 2), box(3, 3, 1, 1), 'replace', 6, 6)).toEqual(box(3, 3, 1, 1))
+  })
+
+  it('adding joins two shapes, with a mask where the box has gaps', () => {
+    const sel = combineSelections(box(0, 0, 2, 2), box(3, 1, 2, 2), 'add', 6, 4)
+    expect(picture(sel, 6, 4)).toEqual(['##....', '##.##.', '...##.', '......'])
+    expect(sel).toMatchObject({ x: 0, y: 0, w: 5, h: 3 })
+  })
+
+  it('adding side by side pieces that fill their box needs no mask', () => {
+    expect(combineSelections(box(0, 0, 2, 2), box(2, 0, 2, 2), 'add', 6, 6)).toEqual(box(0, 0, 4, 2))
+  })
+
+  it('taking away cuts a hole, or trims an edge', () => {
+    expect(picture(combineSelections(box(0, 0, 4, 4), box(1, 1, 2, 2), 'subtract', 4, 4), 4, 4)).toEqual(['####', '#..#', '#..#', '####'])
+    expect(combineSelections(box(0, 0, 4, 4), box(2, 0, 9, 9), 'subtract', 4, 4)).toEqual(box(0, 0, 2, 4))
+  })
+
+  it('works with free shapes, and keeps to the canvas', () => {
+    const triangle = selectionFromLoop([[0, 0], [3, 0], [0, 3]], 4, 4)
+    expect(picture(combineSelections(triangle, box(-2, -2, 3, 3), 'subtract', 4, 4), 4, 4)).toEqual(['.###', '###.', '##..', '#...'])
+    expect(combineSelections(box(-2, -2, 4, 4), box(3, 3, 9, 9), 'add', 4, 4)).toMatchObject({ x: 0, y: 0, w: 4, h: 4 })
+  })
+
+  it('with nothing selected: adding is a plain new selection, taking away leaves nothing', () => {
+    expect(combineSelections(null, box(1, 1, 2, 2), 'add', 4, 4)).toEqual(box(1, 1, 2, 2))
+    expect(combineSelections(null, box(1, 1, 2, 2), 'subtract', 4, 4)).toBeNull()
+    expect(combineSelections(box(1, 1, 2, 2), box(0, 0, 4, 4), 'subtract', 4, 4)).toBeNull()
+    expect(combineSelections(box(1, 1, 2, 2), null, 'add', 4, 4)).toEqual(box(1, 1, 2, 2))
   })
 })
 

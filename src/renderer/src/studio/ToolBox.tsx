@@ -1,10 +1,11 @@
-// The Pixel Studio toolbox: tools, the brush and flip/rotate menus, and the two colours.
+// The Pixel Studio toolbox: tools, the brush, magic wand and flip/rotate menus, and the two colours.
 
 import type { ReactNode } from 'react'
 import { Dropdown } from '@/app/Dropdown'
 import { Icon, type IconName } from '@/app/Icon'
+import { NumberInput } from '@/app/NumberInput'
 import { MAX_BRUSH, type Turn } from './raster'
-import { BRUSH_TOOLS, SELECT_TOOLS, SHAPE_TOOLS, useStudio, type Rescale, type Tool } from './store'
+import { BRUSH_TOOLS, MAX_TOLERANCE, SELECT_TOOLS, SHAPE_TOOLS, useStudio, type Rescale, type Tool } from './store'
 
 export const TOOLS: Array<{ tool: Tool; icon: IconName; label: string; key: string; groupStart?: boolean }> = [
   { tool: 'pencil', icon: 'pencil', label: 'Pencil', key: 'B' },
@@ -14,8 +15,9 @@ export const TOOLS: Array<{ tool: Tool; icon: IconName; label: string; key: stri
   { tool: 'line', icon: 'line', label: 'Line · ⇧ snaps to 45°', key: 'L', groupStart: true },
   { tool: 'rect', icon: 'rect', label: 'Rectangle · ⇧ for a square', key: 'R' },
   { tool: 'ellipse', icon: 'ellipse', label: 'Ellipse · ⇧ for a circle', key: 'O' },
-  { tool: 'select', icon: 'select', label: 'Select · drag inside to move, ⌥-drag to copy', key: 'M', groupStart: true },
-  { tool: 'lasso', icon: 'lasso', label: 'Lasso · draw around what to select; drag inside to move', key: 'Q' }
+  { tool: 'select', icon: 'select', label: 'Select · ⇧ adds, ⌥ takes away · drag inside to move, ⌘-drag to copy', key: 'M', groupStart: true },
+  { tool: 'lasso', icon: 'lasso', label: 'Lasso · draw around what to select · ⇧ adds, ⌥ takes away', key: 'Q' },
+  { tool: 'wand', icon: 'wand', label: 'Magic wand · click a colour to select the area of it · ⇧ adds, ⌥ takes away', key: 'W' }
 ]
 
 /** Flips and quarter turns, with the keys that do them (handled in useStudioShortcuts). */
@@ -41,7 +43,8 @@ export function ToolBox() {
           <button className={`tool ${tool === t.tool ? 'on' : ''}`} onClick={() => setTool(t.tool)} title={`${t.label} (${t.key})`}>
             <Icon name={t.icon} size={20} />
           </button>
-          {t.tool === 'lasso' && SELECT_TOOLS.includes(tool) && <TurnMenu />}
+          {t.tool === 'wand' && tool === 'wand' && <WandMenu />}
+          {t.tool === 'wand' && SELECT_TOOLS.includes(tool) && <TurnMenu />}
           {t.tool === 'ellipse' && SHAPE_TOOLS.includes(tool) && (
             <button
               className={`tool small ${fillShapes ? 'on' : ''}`}
@@ -116,6 +119,25 @@ function BrushMenu() {
             Pixel-perfect lines
           </label>
           <p className="muted small">{size === 1 ? 'Freehand pencil and eraser strokes skip stray corner pixels.' : 'Works with the 1px brush.'}</p>
+        </>
+      )}
+    </ToolPopover>
+  )
+}
+
+function WandMenu() {
+  const tolerance = useStudio((s) => s.wandTolerance)
+  const { setWandTolerance } = useStudio.getState()
+  return (
+    <ToolPopover label={<span className="brush-size">±{tolerance}</span>} title={`Magic wand tolerance: ${tolerance} · how different a colour can be and still be picked`}>
+      {() => (
+        <>
+          <div className="dropdown-label">Tolerance</div>
+          <div className="adjust-row" title="How different a colour can be and still count as a match">
+            <input className="slider" type="range" min={0} max={MAX_TOLERANCE} value={tolerance} onChange={(e) => setWandTolerance(Number(e.target.value))} aria-label="Tolerance" />
+            <NumberInput live className="input adjust-input" value={tolerance} min={0} max={MAX_TOLERANCE} onCommit={setWandTolerance} title={`Type an exact tolerance (0 to ${MAX_TOLERANCE})`} />
+          </div>
+          <p className="muted small">0 picks only the exact colour. Higher picks similar shades too. The wand looks at the current layer.</p>
         </>
       )}
     </ToolPopover>

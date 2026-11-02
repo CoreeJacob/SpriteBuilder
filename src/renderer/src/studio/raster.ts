@@ -114,6 +114,13 @@ export function floodRegion(width: number, height: number, seeds: number[], incl
   return region
 }
 
+/** Colours that differ by at most `tolerance` (0–255) on every channel count as a match. */
+export const colorsMatch = (d: Uint8ClampedArray, i: number, c: RGBA, tolerance: number): boolean =>
+  Math.abs(d[i] - c[0]) <= tolerance &&
+  Math.abs(d[i + 1] - c[1]) <= tolerance &&
+  Math.abs(d[i + 2] - c[2]) <= tolerance &&
+  Math.abs(d[i + 3] - c[3]) <= tolerance
+
 /** The size `w`×`h` shrinks to so it fits inside `maxW`×`maxH` with the same shape (never enlarged). */
 export function fitWithin(w: number, h: number, maxW: number, maxH: number): [number, number] {
   const scale = Math.min(1, maxW / w, maxH / h)

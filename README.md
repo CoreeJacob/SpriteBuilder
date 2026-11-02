@@ -18,7 +18,7 @@ npm run dist     # build a .dmg into dist/
 - **Library**: a normal folder, by default `~/Pictures/SpriteBuilder Library/` (change it at the bottom
   of the Library sidebar). Library folders are real folders, so a game engine can point straight at them.
 - **Metadata** (tags, favourites, ratings, notes, measured sizes) is in `.spritebuilder/library.json`
-  inside the library folder. Files moved or renamed in Finder lose their metadata. Moves done in the app keep it.
+  inside the library folder. Files moved or renamed in the app or in Finder keep it.
 - **Pixel Studio sprites** are saved as `name.png` plus an editable `name.sprite.json` next to it.
 - Deleting in the app moves files to the macOS Trash.
 
@@ -41,6 +41,8 @@ All six phases of the plan are done:
   - Backup and restore as a .zip (File menu, or ⋯ next to Change Folder).
 - **Pixel Studio:**
   - Drawing tools, layers, animation with named tags, and canvas resize.
+  - Selections: rectangle (M), lasso (Q) and magic wand (W). ⇧ adds to a selection and ⌥ takes away;
+    drag inside to move it, ⌘-drag to move a copy.
   - Saved and imported palettes, and GIF import.
   - GIF and sprite-sheet export.
   - Autosave with crash recovery.

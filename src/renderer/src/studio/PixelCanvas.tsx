@@ -10,6 +10,7 @@ import {
   isCorner,
   isSelected,
   type Region,
+  type Selection,
   linePoints,
   mirrorPoints,
   normalizeRect,
@@ -20,7 +21,7 @@ import {
   TRANSPARENT,
   type RGBA
 } from './raster'
-import { maskOutline, outlineSegments, selectionFromLoop } from './selection'
+import { combineSelections, maskOutline, outlineSegments, selectionFromColor, selectionFromLoop, type SelectMode } from './selection'
 import { BRUSH_TOOLS, SELECT_TOOLS, useStudio, ZOOM_LEVELS, type Tool } from './store'
 
 type Cell = [number, number]
@@ -36,9 +37,11 @@ type Drag =
       perfect: { trail: Cell[]; base: Uint8ClampedArray } | null
     }
   | { kind: 'shape'; done: () => void; tool: 'line' | 'rect' | 'ellipse'; start: Cell; base: Uint8ClampedArray; color: RGBA }
-  | { kind: 'select'; anchor: Cell; moved: boolean }
-  | { kind: 'lasso'; points: Cell[] }
+  | { kind: 'select'; anchor: Cell; moved: boolean; base: Selection | null; mode: SelectMode }
+  | { kind: 'lasso'; points: Cell[]; base: Selection | null; mode: SelectMode }
   | { kind: 'move'; startCell: Cell; origin: Cell }
+  /** A wand press inside the selection: a click picks again, a drag moves it. */
+  | { kind: 'press'; startCell: Cell; at: Cell; copy: boolean }
   | { kind: 'scale'; handle: Handle; origin: Region }
 
 /** A resize handle on the selection: which side it moves (−1 left/top, 1 right/bottom, 0 neither). */
@@ -77,6 +80,7 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
   const lastClick = useRef<Cell | null>(null)
   const [hover, setHover] = useState<Cell | null>(null)
   const [altDown, setAltDown] = useState(false)
+  const [shiftDown, setShiftDown] = useState(false)
   const [hoverHandle, setHoverHandle] = useState<Handle | null>(null)
   /** The loop being drawn with the lasso, until the button comes up. */
   const [lassoPath, setLassoPath] = useState<Cell[] | null>(null)
@@ -84,7 +88,10 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
   const repeat = tileMode ? 3 : 1
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => setAltDown(e.altKey)
+    const onKey = (e: KeyboardEvent): void => {
+      setAltDown(e.altKey)
+      setShiftDown(e.shiftKey)
+    }
     window.addEventListener('keydown', onKey)
     window.addEventListener('keyup', onKey)
     return () => {
@@ -360,6 +367,15 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
     plot(shapePixels(d.tool, d.start, corner, fillShapes, brushSize, brushShape), d.color, false)
   }
 
+  /** Magic wand: selects the colour at (x, y) on the current layer, combined with `base` as `mode` says. */
+  const pickByColor = ([x, y]: Cell, base: Selection | null, mode: SelectMode): void => {
+    const s = useStudio.getState()
+    s.commitFloating() // moved pixels are put down first, so the wand sees them
+    const cel = s.activeCel()
+    const picked = cel && x >= 0 && y >= 0 && x < W && y < H ? selectionFromColor(cel, W, H, x, y, s.wandTolerance) : null
+    s.setSelection(combineSelections(base, picked, mode, W, H))
+  }
+
   const onPointerDown = (e: PointerEvent<HTMLCanvasElement>): void => {
     if (e.button !== 0 && e.button !== 2) return
     const s = useStudio.getState()
@@ -368,8 +384,10 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
     const current = effectiveTool(e)
     const outside = x < 0 || y < 0 || x >= W || y >= H
 
-    if (current === 'select' || current === 'lasso') {
+    if (SELECT_TOOLS.includes(current)) {
       e.currentTarget.setPointerCapture(e.pointerId)
+      // ⇧ adds to the selection and ⌥ takes away from it, wherever the press is.
+      const mode: SelectMode = e.shiftKey ? 'add' : e.altKey ? 'subtract' : 'replace'
       const handle = handleAt(e)
       if (handle) {
         if (!s.floating) s.liftSelection()
@@ -378,19 +396,30 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
         return
       }
       const [sx, sy] = unoffset(cell)
-      // Pressing inside the selection's shape picks it up to move it (⌥ leaves a copy behind).
-      if (s.floating && isSelected(s.floating, sx, sy)) {
-        drag.current = { kind: 'move', startCell: cell, origin: [s.floating.x, s.floating.y] }
-      } else if (s.selection && isSelected(s.selection, sx, sy)) {
-        s.liftSelection(e.altKey)
-        drag.current = { kind: 'move', startCell: cell, origin: [s.selection.x, s.selection.y] }
-      } else if (current === 'lasso') {
-        s.setSelection(null)
-        drag.current = { kind: 'lasso', points: [[sx, sy]] }
+      // Pressing inside the selection's shape picks it up to move it (⌘ leaves a copy behind).
+      const held = s.floating && isSelected(s.floating, sx, sy) ? s.floating : s.selection && isSelected(s.selection, sx, sy) ? s.selection : null
+      if (mode === 'replace' && held) {
+        if (current === 'wand') {
+          drag.current = { kind: 'press', startCell: cell, at: [x, y], copy: e.metaKey }
+          return
+        }
+        if (!s.floating) s.liftSelection(e.metaKey)
+        drag.current = { kind: 'move', startCell: cell, origin: [held.x, held.y] }
+        return
+      }
+      // A new selection: ⇧/⌥ build on the selection there was.
+      const base = mode === 'replace' ? null : s.selection
+      if (current === 'wand') {
+        pickByColor([x, y], base, mode)
+        return
+      }
+      s.commitFloating()
+      if (mode === 'replace') s.setSelection(null)
+      if (current === 'lasso') {
+        drag.current = { kind: 'lasso', points: [[sx, sy]], base, mode }
         setLassoPath([[sx, sy]])
       } else {
-        s.setSelection(null)
-        drag.current = { kind: 'select', anchor: clampCell([sx, sy]), moved: false }
+        drag.current = { kind: 'select', anchor: clampCell([sx, sy]), moved: false, base, mode }
       }
       return
     }
@@ -489,10 +518,17 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
       if (px === last[0] && py === last[1]) return
       d.points.push(...linePoints(last[0], last[1], px, py).slice(1))
       setLassoPath([...d.points])
+    } else if (d.kind === 'press') {
+      if (cell[0] === d.startCell[0] && cell[1] === d.startCell[1]) return
+      const from = s.floating ?? s.selection
+      if (!from) return
+      if (!s.floating) s.liftSelection(d.copy)
+      drag.current = { kind: 'move', startCell: d.startCell, origin: [from.x, from.y] }
+      s.moveFloating(from.x + cell[0] - d.startCell[0], from.y + cell[1] - d.startCell[1])
     } else if (d.kind === 'select') {
       const [l, t, r, b] = normalizeRect(...d.anchor, ...clampCell(unoffset(cell)))
       d.moved = true
-      useStudio.setState({ selection: { x: l, y: t, w: r - l + 1, h: b - t + 1 } })
+      useStudio.setState({ selection: combineSelections(d.base, { x: l, y: t, w: r - l + 1, h: b - t + 1 }, d.mode, W, H) })
     } else {
       s.moveFloating(d.origin[0] + cell[0] - d.startCell[0], d.origin[1] + cell[1] - d.startCell[1])
     }
@@ -507,12 +543,15 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
       lastClick.current = d.last
     } else if (d.kind === 'shape') {
       d.done()
+    } else if (d.kind === 'press') {
+      pickByColor(d.at, null, 'replace') // a click (no drag) inside the selection picks again
     } else if (d.kind === 'select' && !d.moved) {
-      useStudio.getState().setSelection(null) // a plain click clears the selection
+      if (d.mode === 'replace') useStudio.getState().setSelection(null) // a plain click clears the selection
     } else if (d.kind === 'lasso') {
       setLassoPath(null)
-      // A plain click (no loop drawn) clears the selection.
-      useStudio.getState().setSelection(d.points.length > 1 ? selectionFromLoop(d.points, W, H) : null)
+      // A plain click (no loop drawn) clears the selection, or with ⇧/⌥ leaves it as it was.
+      const loop = d.points.length > 1 ? selectionFromLoop(d.points, W, H) : null
+      if (loop || d.mode === 'replace') useStudio.getState().setSelection(combineSelections(d.base, loop, d.mode, W, H))
     }
   }
 
@@ -530,13 +569,15 @@ export function PixelCanvas({ onHover }: { onHover: (p: Cell | null) => void }) 
     return (floating ?? selection) !== null && isSelected(floating ?? selection, hx, hy)
   })()
   const cursorTool = altDown && PICKS_WITH_ALT.includes(tool) ? 'eyedropper' : tool
-  const cursorClass = SELECT_TOOLS.includes(tool) && hoverInSelection ? 'tool-move' : `tool-${cursorTool}`
+  // With ⇧ or ⌥ held, a press makes a selection instead of moving one.
+  const movesOnPress = SELECT_TOOLS.includes(tool) && hoverInSelection && !altDown && !shiftDown
+  const cursorClass = movesOnPress ? 'tool-move' : `tool-${cursorTool}`
 
   return (
     <canvas
       ref={canvasRef}
       className={`pixel-canvas checker ${cursorClass}`}
-      style={tool === 'select' && hoverHandle ? { cursor: handleCursor(hoverHandle) } : undefined}
+      style={hoverHandle ? { cursor: handleCursor(hoverHandle) } : undefined}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={endDrag}

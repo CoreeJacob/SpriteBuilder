@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { serializeDoc } from './model'
-import { selectionFromLoop, turnMask } from './selection'
+import { combineSelections, selectionFromColor, selectionFromLoop, turnMask } from './selection'
 import { undoMemory, useStudio } from './store'
 
 describe('studio frame actions', () => {
@@ -109,6 +109,14 @@ describe('undo memory and exactness', () => {
         state().moveFloating(1, 1)
         if (rnd() < 0.5) state().turn('rotateCW')
         state().commitFloating()
+        state().setSelection(null)
+      },
+      // A magic wand pick, with a corner taken away, cleared.
+      () => {
+        const { width, height } = state().doc!
+        const picked = selectionFromColor(state().activeCel()!, width, height, Math.floor(rnd() * width), Math.floor(rnd() * height), pick([0, 100]))
+        state().setSelection(combineSelections(picked, { x: 0, y: 0, w: 2, h: 2 }, 'subtract', width, height))
+        state().deleteSelection()
         state().setSelection(null)
       },
       () => state().setActiveLayer(pick(state().doc!.layers).id),

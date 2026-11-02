@@ -2,7 +2,7 @@
 // never changed, which keeps undo simple.
 
 import { applyPalette, quantize } from 'gifenc'
-import { colorsByUse, floodRegion, opaqueBounds, resizePixels, turnPixels, type RGBA, type Turn } from '@/studio/raster'
+import { colorsByUse, colorsMatch, floodRegion, opaqueBounds, resizePixels, turnPixels, type RGBA, type Turn } from '@/studio/raster'
 
 export interface Img {
   width: number
@@ -156,18 +156,11 @@ export function adjust(img: Img, a: Adjustments): Img {
 
 // ---------- colours ----------
 
-/** Colours that differ by at most `tolerance` (0–255) on every channel count as a match. */
-const matches = (d: Uint8ClampedArray, i: number, c: RGBA, tolerance: number): boolean =>
-  Math.abs(d[i] - c[0]) <= tolerance &&
-  Math.abs(d[i + 1] - c[1]) <= tolerance &&
-  Math.abs(d[i + 2] - c[2]) <= tolerance &&
-  Math.abs(d[i + 3] - c[3]) <= tolerance
-
 /** Replaces one colour (and near matches) everywhere in the image. */
 export function replaceColor(img: Img, from: RGBA, to: RGBA, tolerance = 0): Img {
   const out = copyImg(img)
   for (let i = 0; i < out.data.length; i += 4) {
-    if (out.data[i + 3] !== 0 && matches(out.data, i, from, tolerance)) out.data.set(to, i)
+    if (out.data[i + 3] !== 0 && colorsMatch(out.data, i, from, tolerance)) out.data.set(to, i)
   }
   return out
 }
@@ -181,7 +174,7 @@ export function makeTransparent(img: Img, color: RGBA, tolerance: number, at?: {
 /** Clears every matching pixel connected to any of the seed points (x, y pairs). */
 function floodClear(img: Img, color: RGBA, tolerance: number, seeds: number[]): Img {
   const out = copyImg(img)
-  const region = floodRegion(img.width, img.height, seeds, (p) => img.data[p * 4 + 3] !== 0 && matches(img.data, p * 4, color, tolerance))
+  const region = floodRegion(img.width, img.height, seeds, (p) => img.data[p * 4 + 3] !== 0 && colorsMatch(img.data, p * 4, color, tolerance))
   for (const p of region) out.data.fill(0, p * 4, p * 4 + 4)
   return out
 }

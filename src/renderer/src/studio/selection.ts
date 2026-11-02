@@ -1,10 +1,14 @@
 // Free-shape selections (a box plus a mask of which pixels in it are selected): making one from
-// a lasso loop, lifting and clearing only the selected pixels, keeping the mask in step when the
+// a lasso loop or by colour (the magic wand), adding to and taking away from one, lifting and clearing only the selected pixels, keeping the mask in step when the
 // pixels are flipped, turned or resized, and tracing its outline for the marching ants.
 
 import {
   clearRegion,
+  colorsMatch,
   extractRegion,
+  floodRegion,
+  getPixel,
+  isSelected,
   linePoints,
   resizePixels,
   turnPixels,
@@ -70,6 +74,38 @@ export function selectionFromLoop(points: Array<[number, number]>, width: number
   for (let i = 0; i < n; i++) {
     for (const [x, y] of linePoints(...points[i], ...points[(i + 1) % n])) {
       if (x >= 0 && y >= 0 && x < width && y < height) full[y * width + x] = 1
+    }
+  }
+  return cropToBox(full, width, height)
+}
+
+/**
+ * Magic wand: the pixels of the same colour as (x, y) that touch it (4-way), counting colours
+ * within `tolerance` (0–255 per channel) as the same. All clear pixels count as one colour.
+ */
+export function selectionFromColor(buf: Uint8ClampedArray, width: number, height: number, x: number, y: number, tolerance: number): Selection | null {
+  if (x < 0 || y < 0 || x >= width || y >= height) return null
+  const seed = getPixel(buf, width, x, y)
+  const clear = seed[3] === 0
+  const full = new Uint8Array(width * height)
+  const region = floodRegion(width, height, [x, y], (p) => (clear && buf[p * 4 + 3] === 0) || colorsMatch(buf, p * 4, seed, tolerance))
+  for (const p of region) full[p] = 1
+  return cropToBox(full, width, height)
+}
+
+export type SelectMode = 'replace' | 'add' | 'subtract'
+
+/**
+ * A new selection combined with the one already there: replacing it, added to it (⇧) or taken
+ * away from it (⌥). Kept within the canvas; null if nothing is left.
+ */
+export function combineSelections(base: Selection | null, next: Selection | null, mode: SelectMode, width: number, height: number): Selection | null {
+  if (mode === 'replace' || !base) return mode === 'subtract' ? null : next
+  if (!next) return base
+  const full = new Uint8Array(width * height)
+  for (const [sel, on] of [[base, 1], [next, mode === 'add' ? 1 : 0]] as const) {
+    for (let y = Math.max(0, sel.y); y < Math.min(height, sel.y + sel.h); y++) {
+      for (let x = Math.max(0, sel.x); x < Math.min(width, sel.x + sel.w); x++) if (isSelected(sel, x, y)) full[y * width + x] = on
     }
   }
   return cropToBox(full, width, height)

@@ -37,10 +37,13 @@ import {
 } from './raster'
 import { clearSelected, liftSelected, resizeMask, turnMask } from './selection'
 
-export type Tool = 'pencil' | 'eraser' | 'fill' | 'eyedropper' | 'line' | 'rect' | 'ellipse' | 'select' | 'lasso'
+export type Tool = 'pencil' | 'eraser' | 'fill' | 'eyedropper' | 'line' | 'rect' | 'ellipse' | 'select' | 'lasso' | 'wand'
 
 /** Tools that make selections; switching between them keeps lifted pixels in hand. */
-export const SELECT_TOOLS: Tool[] = ['select', 'lasso']
+export const SELECT_TOOLS: Tool[] = ['select', 'lasso', 'wand']
+
+/** The most the magic wand's tolerance goes up to (the same as the Image Editor's). */
+export const MAX_TOLERANCE = 128
 
 export const SHAPE_TOOLS: Tool[] = ['line', 'rect', 'ellipse']
 
@@ -127,6 +130,8 @@ interface StudioState extends DocLocation {
   brushShape: BrushShape
   /** Freehand 1-pixel lines skip the extra corner pixels of jagged steps. */
   pixelPerfect: boolean
+  /** How different a colour can be (0–128 per channel) and still be picked by the magic wand. */
+  wandTolerance: number
   mirrorX: boolean
   mirrorY: boolean
   selection: Selection | null
@@ -165,13 +170,14 @@ interface StudioState extends DocLocation {
   setBrushSize(size: number): void
   setBrushShape(shape: BrushShape): void
   togglePixelPerfect(): void
+  setWandTolerance(tolerance: number): void
   toggleMirrorX(): void
   toggleMirrorY(): void
 
   setSelection(selection: Selection | null): void
   selectAll(): void
   deselect(): void
-  /** Lifts the selected pixels so they can be moved. With `keepOriginal` the move leaves a copy behind. */
+  /** Lifts the selected pixels so they can be moved. With `keepOriginal` (⌘-drag) the move leaves a copy behind. */
   liftSelection(keepOriginal?: boolean): void
   moveFloating(x: number, y: number): void
   commitFloating(): void
@@ -324,6 +330,7 @@ export const useStudio = create<StudioState>((set, get) => {
     brushSize: 1,
     brushShape: 'square',
     pixelPerfect: false,
+    wandTolerance: 0,
     mirrorX: false,
     mirrorY: false,
     selection: null,
@@ -472,6 +479,7 @@ export const useStudio = create<StudioState>((set, get) => {
     setBrushSize: (size) => set({ brushSize: Math.max(1, Math.min(MAX_BRUSH, Math.round(size))) }),
     setBrushShape: (brushShape) => set({ brushShape }),
     togglePixelPerfect: () => set({ pixelPerfect: !get().pixelPerfect }),
+    setWandTolerance: (tolerance) => set({ wandTolerance: Math.max(0, Math.min(MAX_TOLERANCE, Math.round(tolerance))) }),
     toggleMirrorX: () => set({ mirrorX: !get().mirrorX }),
     toggleMirrorY: () => set({ mirrorY: !get().mirrorY }),
 

@@ -34,6 +34,8 @@ const GROUPS: Array<{ title: string; keys: Array<[string, string]> }> = [
       ['[ / ]', 'Smaller / bigger brush'],
       ['M', 'Select (rectangle)'],
       ['Q', 'Lasso: draw around what to select'],
+      ['W', 'Magic wand: click a colour to select it'],
+      ['⇧ / ⌥ while selecting', 'Add to / take away from the selection'],
       ['X', 'Swap front and back colours'],
       ['⇧ while drawing', 'Straight lines, squares, circles']
     ]
@@ -42,6 +44,7 @@ const GROUPS: Array<{ title: string; keys: Array<[string, string]> }> = [
     title: 'Pixel Studio · editing',
     keys: [
       ['⌘C / ⌘X / ⌘V', 'Copy / Cut / Paste'],
+      ['Drag inside / ⌘-drag', 'Move the selection / move a copy'],
       ['Arrows (⇧ = 8px)', 'Nudge the selection'],
       ['⇧H / ⇧V', 'Flip the selection (or layer)'],
       ['⇧R / ⌥⇧R', 'Rotate 90° right / left'],
